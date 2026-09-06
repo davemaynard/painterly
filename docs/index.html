@@ -34,26 +34,22 @@
           </p>
         </header>
 
-        <div class="player">
-          <figure class="stage" aria-label="The painting">
-            <canvas id="canvas" width="1400" height="933"></canvas>
-          </figure>
+        <figure class="stage" aria-label="The painting">
+          <canvas id="canvas" width="1400" height="933"></canvas>
+        </figure>
 
-          <div class="bar">
-            <fieldset class="controls">
-              <legend class="visually-hidden">Playback</legend>
-              <button id="play" type="button" aria-pressed="false" disabled>Play</button>
-              <label class="timeline">
-                <span class="visually-hidden">Timeline</span>
-                <input id="timeline" type="range" min="0" max="1" value="0" step="1" disabled />
-              </label>
-              <button id="again" type="button" title="Plan it again with a new seed">Paint again</button>
-              <button id="download" type="button" hidden>Download PNG</button>
-            </fieldset>
-          </div>
-          <p id="status" class="status" role="status" aria-live="polite">Loading…</p>
-          <p id="caption" class="caption"></p>
-        </div>
+        <fieldset class="controls">
+          <legend class="visually-hidden">Playback</legend>
+          <button id="play" type="button" aria-pressed="false" disabled>Play</button>
+          <label class="timeline">
+            <span class="visually-hidden">Timeline</span>
+            <input id="timeline" type="range" min="0" max="1" value="0" step="1" disabled />
+          </label>
+          <button id="again" type="button" title="Plan it again with a new seed">Paint again</button>
+          <button id="download" type="button" hidden>Download PNG</button>
+        </fieldset>
+        <p id="status" class="status" role="status" aria-live="polite">Loading…</p>
+        <p id="caption" class="caption"></p>
       </div>
 
       <section class="picker">

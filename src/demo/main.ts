@@ -45,7 +45,6 @@ const brushSelect = $<HTMLSelectElement>('#brush');
 const styleSelect = $<HTMLSelectElement>('#style');
 const photoList = $<HTMLElement>('#photos');
 const ownTile = $<HTMLElement>('#own');
-const player = $<HTMLElement>('.player');
 const fileInput = $<HTMLInputElement>('#file');
 const status = $<HTMLElement>('#status');
 const caption = $<HTMLElement>('#caption');
@@ -109,13 +108,6 @@ fileInput.addEventListener('change', () => {
   };
   void load();
 });
-
-// The controls and captions take the picture's width, so the player reads as
-// one object however the photo is shaped. Measured, because the canvas's width
-// falls out of the height the fold gives it.
-new ResizeObserver(() => {
-  player.style.setProperty('--stage-width', `${canvas.getBoundingClientRect().width}px`);
-}).observe(canvas);
 
 // ---- controls ---------------------------------------------------------------
 
