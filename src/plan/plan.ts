@@ -127,7 +127,9 @@ export function plan(source: Raster, options: PlanOptions = {}): Plan {
       stroke.jitter = Math.floor(random.next() * 0x100000000);
       stampStroke(canvas, stroke.points, radius, stroke.color);
     }
-    strokes.push(...layerStrokes);
+    // Not push(...layerStrokes): a fine grid can hold more strokes than the
+    // call stack has room for arguments.
+    for (const stroke of layerStrokes) strokes.push(stroke);
     layerSizes.push(layerStrokes.length);
   });
 
