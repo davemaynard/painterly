@@ -2,24 +2,25 @@
 
 :root {
   color-scheme: light dark;
-  --paper: #f3efe6;
-  --ink: #17150f;
-  --muted: #6d675b;
-  --line: #d9d2c3;
-  --accent: #c8482b;
-  --accent-ink: #fff8f2;
+  /* Warm greys, not cream: the page stays neutral so the paintings carry the colour. */
+  --paper: #f4f3f0;
+  --ink: #1c1b19;
+  --muted: #6b6965;
+  --line: #d8d6d1;
+  --accent: var(--ink);
+  --accent-ink: var(--paper);
   --sans: "IBM Plex Sans", system-ui, sans-serif;
   --mono: "IBM Plex Mono", ui-monospace, monospace;
   --measure: 60ch;
+  --page-top: clamp(1rem, 3vw, 2.5rem);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --paper: #15140f;
-    --ink: #efe9dc;
-    --muted: #9c9587;
-    --line: #2d2a22;
-    --accent: #e0603f;
+    --paper: #151514;
+    --ink: #ebe9e4;
+    --muted: #9a9893;
+    --line: #2b2a28;
   }
 }
 
@@ -29,7 +30,7 @@
 
 body {
   margin: 0;
-  padding: clamp(1rem, 3vw, 2.5rem) clamp(1rem, 4vw, 3rem) 3rem;
+  padding: var(--page-top) clamp(1rem, 4vw, 3rem) 3rem;
   background: var(--paper);
   color: var(--ink);
   font: 400 1rem / 1.5 var(--sans);
@@ -40,6 +41,27 @@ body {
 a {
   color: inherit;
   text-underline-offset: 0.15em;
+}
+
+::selection {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 3px;
+}
+
+/* The fold: on a desktop the masthead, painting and controls share the first
+   screen whatever the photo's shape. The canvas takes the height left over. */
+
+@media (min-width: 60rem) {
+  .fold {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr) auto auto auto;
+    height: calc(100svh - var(--page-top));
+  }
 }
 
 /* Masthead */
@@ -83,18 +105,28 @@ a {
 
 .stage {
   margin: 0;
+  min-height: 0;
   display: flex;
   justify-content: center;
+  align-items: center;
 }
 
 .stage canvas {
   display: block;
   max-width: 100%;
-  max-height: 78vh;
+  max-height: 100%;
   width: auto;
   height: auto;
   border-radius: 2px;
-  box-shadow: 0 1px 2px rgb(0 0 0 / 0.12);
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 0.1),
+    0 12px 32px -16px rgb(0 0 0 / 0.35);
+}
+
+@media (max-width: 59.99rem) {
+  .stage canvas {
+    max-height: 70svh;
+  }
 }
 
 /* Controls */
@@ -109,8 +141,7 @@ a {
   flex-wrap: wrap;
 }
 
-.controls button,
-.controls a {
+.controls button {
   font: 500 0.9375rem / 1 var(--sans);
   padding: 0.6rem 1rem;
   border-radius: 999px;
@@ -118,7 +149,13 @@ a {
   background: transparent;
   color: var(--ink);
   cursor: pointer;
-  text-decoration: none;
+  transition:
+    border-color 150ms,
+    background-color 150ms;
+}
+
+.controls button:not(:disabled):hover {
+  border-color: var(--ink);
 }
 
 .controls button:disabled {
@@ -133,10 +170,19 @@ a {
   color: var(--accent-ink);
 }
 
+#play:not(:disabled):hover {
+  background: color-mix(in oklab, var(--accent) 85%, var(--paper));
+  border-color: transparent;
+}
+
 #play[aria-pressed="true"] {
   background: transparent;
   color: var(--ink);
   border-color: var(--line);
+}
+
+#play[aria-pressed="true"]:hover {
+  border-color: var(--ink);
 }
 
 .timeline {
@@ -146,7 +192,27 @@ a {
 
 .timeline input {
   width: 100%;
+  margin: 0;
   accent-color: var(--accent);
+}
+
+/* On a phone the timeline takes its own row, like a video scrubber under the
+   picture, and the buttons share the row beneath it. */
+@media (max-width: 47.99rem) {
+  .controls {
+    gap: 0.75rem 0.5rem;
+  }
+  .timeline {
+    flex-basis: 100%;
+    order: -1;
+  }
+  .controls button {
+    font-size: 0.875rem;
+    padding: 0.55rem 0.85rem;
+  }
+  #play {
+    min-width: 0;
+  }
 }
 
 .status,
@@ -219,12 +285,19 @@ a {
   transition: outline-color 150ms;
 }
 
+.photo:hover img {
+  outline-color: var(--line);
+}
+
 .photo input:checked + img {
-  outline-color: var(--accent);
+  outline-color: var(--ink);
 }
 
 .photo input:focus-visible + img {
   outline-color: var(--ink);
+  box-shadow:
+    0 0 0 4px var(--paper),
+    0 0 0 6px var(--ink);
 }
 
 .side {
@@ -243,6 +316,12 @@ a {
   border: 1px solid var(--line);
   border-radius: 4px;
   background: transparent;
+  transition: border-color 150ms;
+}
+
+.field select:hover,
+.field input[type="file"]:hover {
+  border-color: var(--ink);
 }
 
 .field small {
