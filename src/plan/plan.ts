@@ -120,6 +120,8 @@ export function plan(source: Raster, options: PlanOptions = {}): Plan {
       }
     }
 
+    // Shuffle first, then draw each stroke's jitter, so the brush's own
+    // randomness follows painting order and the whole plan stays reproducible.
     random.shuffle(layerStrokes);
     for (const stroke of layerStrokes) {
       stroke.jitter = Math.floor(random.next() * 0x100000000);

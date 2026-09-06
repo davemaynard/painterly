@@ -15,11 +15,17 @@ import {isStyleName, plan, type StyleName, styles} from '../plan';
 import type {Plan} from '../types';
 import {type Photo, photos} from './photos';
 
-/** How long each style plays, whatever the photo. The underpainting has a few hundred strokes; watching each one land is the point. */
+/**
+ * How long each style plays, whatever the photo. The underpainting has a few
+ * hundred strokes; watching each one land is the point.
+ */
 const DURATION_MS: Record<StyleName, number> = {painting: 45_000, underpainting: 20_000};
 /** The brush each style starts with. The visitor can still change it. */
 const DEFAULT_BRUSH: Record<StyleName, BrushName> = {painting: 'bristle', underpainting: 'ribbon'};
-/** Longest side the photo is planned at. Phones get a smaller canvas so planning stays under a few seconds. */
+/**
+ * Longest side the photo is planned at. Phones get a smaller canvas so planning
+ * stays under a few seconds.
+ */
 const PLAN_SIDE = window.innerWidth < 600 ? 900 : 1400;
 
 const $ = <T extends Element>(selector: string): T => {
@@ -89,6 +95,8 @@ fileInput.addEventListener('change', () => {
   const file = fileInput.files?.[0];
   if (!file) return;
   for (const input of photoList.querySelectorAll('input')) input.checked = false;
+  // A replaced own photo has nothing left pointing at its blob.
+  if (state.photo.id === 'own') URL.revokeObjectURL(state.photo.file);
   state = {
     ...state,
     photo: {id: 'own', file: URL.createObjectURL(file), caption: file.name, credit: null},
