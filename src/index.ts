@@ -25,8 +25,10 @@ export {
   type BrushName,
   brushes,
   createPainter,
+  createSchedule,
   type Painter,
   paintStroke,
+  type Schedule,
 } from './paint';
 export {defaultRadii, meanDifference, type PlanOptions, plan, simulate} from './plan';
 export {createRandom, jitter, type Random} from './random';

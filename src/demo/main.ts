@@ -2,11 +2,18 @@
 // with a timeline you can scrub. Everything here is wiring; the decisions live
 // in plan/, the look in paint/, the pacing in schedule.ts.
 import {rasterFromImageData} from '../image';
-import {type Brush, type BrushName, brushes, createPainter, type Painter} from '../paint';
+import {
+  type Brush,
+  type BrushName,
+  brushes,
+  createPainter,
+  createSchedule,
+  type Painter,
+  type Schedule,
+} from '../paint';
 import {plan} from '../plan';
 import type {Plan} from '../types';
 import {type Photo, photos} from './photos';
-import {createSchedule, type Schedule} from './schedule';
 
 /** The whole painting plays in this long, whatever the photo. */
 const DURATION_MS = 45_000;
@@ -150,13 +157,17 @@ async function load(): Promise<void> {
   schedule = createSchedule(painting, DURATION_MS);
   timeline.max = String(painting.strokes.length);
   timeline.value = '0';
+  // Where each brush hands over, for tooling that wants to pace itself like the page does.
+  timeline.dataset.layers = painting.layerSizes.join(',');
   timeline.disabled = false;
   startPainter(painting);
   caption.append(
     ` · ${painting.strokes.length.toLocaleString()} strokes across ${painting.layerSizes.filter((n) => n > 0).length} brushes, planned in ${(plannedIn / 1000).toFixed(1)} s.`,
   );
   playButton.disabled = false;
-  play();
+  // Autoplay is the point of the page, unless the visitor has asked for less motion.
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) setStatus('Ready. Press play.');
+  else play();
 }
 
 function startPainter(current: Plan): void {
