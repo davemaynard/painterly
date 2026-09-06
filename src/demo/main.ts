@@ -44,6 +44,8 @@ const timeline = $<HTMLInputElement>('#timeline');
 const brushSelect = $<HTMLSelectElement>('#brush');
 const styleSelect = $<HTMLSelectElement>('#style');
 const photoList = $<HTMLElement>('#photos');
+const ownTile = $<HTMLElement>('#own');
+const player = $<HTMLElement>('.player');
 const fileInput = $<HTMLInputElement>('#file');
 const status = $<HTMLElement>('#status');
 const caption = $<HTMLElement>('#caption');
@@ -77,13 +79,14 @@ for (const photo of photos) {
   input.value = photo.id;
   input.checked = photo.id === state.photo.id;
   const thumb = document.createElement('img');
+  thumb.className = 'thumb';
   thumb.src = photo.file;
   thumb.alt = '';
   thumb.loading = 'lazy';
   const text = document.createElement('span');
   text.textContent = photo.caption;
   label.append(input, thumb, text);
-  photoList.append(label);
+  ownTile.before(label);
   input.addEventListener('change', () => {
     if (!input.checked) return;
     state = {...state, photo, seed: 1};
@@ -94,7 +97,9 @@ for (const photo of photos) {
 fileInput.addEventListener('change', () => {
   const file = fileInput.files?.[0];
   if (!file) return;
-  for (const input of photoList.querySelectorAll('input')) input.checked = false;
+  for (const input of photoList.querySelectorAll<HTMLInputElement>('input[type="radio"]')) {
+    input.checked = false;
+  }
   // A replaced own photo has nothing left pointing at its blob.
   if (state.photo.id === 'own') URL.revokeObjectURL(state.photo.file);
   state = {
@@ -104,6 +109,13 @@ fileInput.addEventListener('change', () => {
   };
   void load();
 });
+
+// The controls and captions take the picture's width, so the player reads as
+// one object however the photo is shaped. Measured, because the canvas's width
+// falls out of the height the fold gives it.
+new ResizeObserver(() => {
+  player.style.setProperty('--stage-width', `${canvas.getBoundingClientRect().width}px`);
+}).observe(canvas);
 
 // ---- controls ---------------------------------------------------------------
 

@@ -59,22 +59,25 @@ a {
 @media (min-width: 60rem) {
   .fold {
     display: grid;
-    grid-template-rows: auto minmax(0, 1fr) auto auto auto;
+    grid-template-rows: auto minmax(0, 1fr);
+    row-gap: 1.5rem;
     height: calc(100svh - var(--page-top));
   }
 }
 
 /* Masthead */
 
+/* Wordmark, definition and how-it-works side by side on a desktop, so the
+   masthead uses its width instead of its height. */
 @media (min-width: 60rem) {
   .masthead {
     display: grid;
-    grid-template-columns: 1fr 2fr;
+    grid-template-columns: auto 1fr 1fr;
     gap: 0 3rem;
     align-items: start;
   }
-  .masthead h1 {
-    grid-row: 1 / 3;
+  .masthead p {
+    margin-bottom: 0;
   }
 }
 
@@ -101,7 +104,28 @@ a {
   color: var(--muted);
 }
 
-/* Stage */
+/* Player: the picture, with its controls and captions the picture's width. The
+   page script keeps --stage-width equal to the canvas as drawn. */
+
+.player {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto auto auto;
+  min-height: 0;
+}
+
+.bar {
+  width: var(--stage-width, 100%);
+  max-width: 100%;
+  margin-inline: auto;
+  container-type: inline-size;
+}
+
+/* The captions start under the picture's left edge but may run on to the
+   page edge, so a narrow picture never squeezes them into extra lines. */
+.status,
+.caption {
+  margin-left: max(0px, calc((100% - var(--stage-width, 100%)) / 2));
+}
 
 .stage {
   margin: 0;
@@ -196,9 +220,9 @@ a {
   accent-color: var(--accent);
 }
 
-/* On a phone the timeline takes its own row, like a video scrubber under the
-   picture, and the buttons share the row beneath it. */
-@media (max-width: 47.99rem) {
+/* Under a narrow picture, phone or portrait, the timeline takes its own row,
+   like a video scrubber, and the buttons share the row beneath it. */
+@container (max-width: 36rem) {
   .controls {
     gap: 0.75rem 0.5rem;
   }
@@ -219,25 +243,15 @@ a {
 .caption {
   font: 400 0.875rem / 1.4 var(--mono);
   color: var(--muted);
-  margin: 0.5rem 0 0;
+  margin-block: 0.5rem 0;
 }
 
 /* Picker */
 
 .picker {
-  display: grid;
-  grid-template-columns: 1fr;
-  align-items: start;
-  gap: 1.5rem;
-  margin-top: 2rem;
+  margin-top: 2.5rem;
   padding-top: 1.5rem;
   border-top: 1px solid var(--line);
-}
-
-@media (min-width: 48rem) {
-  .picker {
-    grid-template-columns: 1fr 16rem;
-  }
 }
 
 .photos {
@@ -278,39 +292,69 @@ a {
   cursor: pointer;
 }
 
-.photo img {
+.photo .thumb {
+  display: block;
   width: 100%;
   aspect-ratio: 4 / 3;
   object-fit: cover;
   border-radius: 2px;
   outline: 2px solid transparent;
   outline-offset: 2px;
-  transition: outline-color 150ms;
+  transition:
+    outline-color 150ms,
+    border-color 150ms,
+    color 150ms;
 }
 
-.photo:hover img {
+.photo:hover .thumb {
   outline-color: var(--line);
 }
 
-.photo input:checked + img {
+.photo input:checked + .thumb {
   outline-color: var(--ink);
 }
 
-.photo input:focus-visible + img {
+.photo input:focus-visible + .thumb {
   outline-color: var(--ink);
   box-shadow:
     0 0 0 4px var(--paper),
     0 0 0 6px var(--ink);
 }
 
-.side {
-  display: grid;
-  gap: 1.25rem;
-  align-content: start;
+.photo small {
+  display: block;
+  margin-top: 0.15rem;
+  color: var(--muted);
+  font-size: 0.75rem;
 }
 
-.field select,
-.field input[type="file"] {
+/* The fifth tile: an empty frame for the visitor's own photo. */
+.own .thumb {
+  display: grid;
+  place-items: center;
+  border: 1px dashed var(--line);
+  color: var(--muted);
+}
+
+.own:hover .thumb {
+  outline-color: transparent;
+  border-color: var(--ink);
+  color: var(--ink);
+}
+
+.settings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  margin-top: 1.75rem;
+}
+
+.field {
+  flex: 1 1 16rem;
+  max-width: 22rem;
+}
+
+.field select {
   display: block;
   width: 100%;
   font: inherit;
@@ -322,16 +366,8 @@ a {
   transition: border-color 150ms;
 }
 
-.field select:hover,
-.field input[type="file"]:hover {
+.field select:hover {
   border-color: var(--ink);
-}
-
-.field small {
-  display: block;
-  margin-top: 0.4rem;
-  color: var(--muted);
-  font-size: 0.8125rem;
 }
 
 /* Colophon */
@@ -342,7 +378,11 @@ a {
   border-top: 1px solid var(--line);
   color: var(--muted);
   font-size: 0.875rem;
+}
+
+.colophon p {
   max-width: var(--measure);
+  margin: 0;
 }
 
 .visually-hidden {
