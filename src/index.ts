@@ -30,6 +30,15 @@ export {
   paintStroke,
   type Schedule,
 } from './paint';
-export {defaultRadii, meanDifference, type PlanOptions, plan, simulate} from './plan';
+export {
+  defaultRadii,
+  isStyleName,
+  meanDifference,
+  type PlanOptions,
+  plan,
+  type StyleName,
+  simulate,
+  styles,
+} from './plan';
 export {createRandom, jitter, type Random} from './random';
 export type {Plan, Point, Rgb, Stroke} from './types';

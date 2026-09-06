@@ -94,9 +94,22 @@ test('changing the brush repaints what is on the canvas', async () => {
   const page = await open('photo=mist&seed=1');
   await seek(page, 3000);
   const bristle = await canvasPng(page);
-  await page.getByLabel('Brush').selectOption('round');
+  await page.getByLabel('Brush', {exact: true}).selectOption('round');
   assert.notEqual(await canvasPng(page), bristle);
   assert.match(page.url(), /brush=round/);
+  await page.close();
+});
+
+test('the underpainting style stops after one brush and keeps its own URL', async () => {
+  const page = await open('photo=mist&seed=1&style=underpainting');
+  const total = await strokeCount(page);
+  assert.ok(total > 100 && total < 3000, `${total} strokes is not a single big brush`);
+  assert.equal(await page.getByLabel('Brush', {exact: true}).inputValue(), 'ribbon');
+  await assert.doesNotReject(page.getByText(/across 1 brush,/).waitFor());
+  await page.getByLabel('Style', {exact: true}).selectOption('painting');
+  await page.getByRole('button', {name: 'Pause'}).waitFor({timeout: 60_000});
+  assert.ok((await strokeCount(page)) > 10_000);
+  assert.match(page.url(), /style=painting/);
   await page.close();
 });
 

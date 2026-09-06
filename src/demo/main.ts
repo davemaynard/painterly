@@ -11,12 +11,14 @@ import {
   type Painter,
   type Schedule,
 } from '../paint';
-import {plan} from '../plan';
+import {isStyleName, plan, type StyleName, styles} from '../plan';
 import type {Plan} from '../types';
 import {type Photo, photos} from './photos';
 
-/** The whole painting plays in this long, whatever the photo. */
-const DURATION_MS = 45_000;
+/** How long each style plays, whatever the photo. The underpainting has a few hundred strokes; watching each one land is the point. */
+const DURATION_MS: Record<StyleName, number> = {painting: 45_000, underpainting: 20_000};
+/** The brush each style starts with. The visitor can still change it. */
+const DEFAULT_BRUSH: Record<StyleName, BrushName> = {painting: 'bristle', underpainting: 'ribbon'};
 /** Longest side the photo is planned at. Phones get a smaller canvas so planning stays under a few seconds. */
 const PLAN_SIDE = window.innerWidth < 600 ? 900 : 1400;
 
@@ -34,6 +36,7 @@ const againButton = $<HTMLButtonElement>('#again');
 const downloadButton = $<HTMLButtonElement>('#download');
 const timeline = $<HTMLInputElement>('#timeline');
 const brushSelect = $<HTMLSelectElement>('#brush');
+const styleSelect = $<HTMLSelectElement>('#style');
 const photoList = $<HTMLElement>('#photos');
 const fileInput = $<HTMLInputElement>('#file');
 const status = $<HTMLElement>('#status');
@@ -42,6 +45,7 @@ const caption = $<HTMLElement>('#caption');
 type State = {
   photo: Photo | {id: 'own'; file: string; caption: string; credit: null};
   seed: number;
+  style: StyleName;
   brush: BrushName;
 };
 
@@ -100,6 +104,14 @@ againButton.addEventListener('click', () => {
   state = {...state, seed: state.seed + 1};
   void load();
 });
+styleSelect.value = state.style;
+styleSelect.addEventListener('change', () => {
+  const style = styleSelect.value;
+  if (!isStyleName(style)) return;
+  state = {...state, style, brush: DEFAULT_BRUSH[style]};
+  brushSelect.value = state.brush;
+  void load();
+});
 brushSelect.value = state.brush;
 brushSelect.addEventListener('change', () => {
   state = {...state, brush: brushSelect.value as BrushName};
@@ -152,9 +164,9 @@ async function load(): Promise<void> {
   const source = rasterFromImageData(refContext.getImageData(0, 0, width, height));
 
   const started = performance.now();
-  painting = plan(source, {seed: state.seed});
+  painting = plan(source, {...styles[state.style].options(width, height), seed: state.seed});
   const plannedIn = Math.round(performance.now() - started);
-  schedule = createSchedule(painting, DURATION_MS);
+  schedule = createSchedule(painting, DURATION_MS[state.style]);
   timeline.max = String(painting.strokes.length);
   timeline.value = '0';
   // Where each brush hands over, for tooling that wants to pace itself like the page does.
@@ -162,7 +174,7 @@ async function load(): Promise<void> {
   timeline.disabled = false;
   startPainter(painting);
   caption.append(
-    ` · ${painting.strokes.length.toLocaleString()} strokes across ${painting.layerSizes.filter((n) => n > 0).length} brushes, planned in ${(plannedIn / 1000).toFixed(1)} s.`,
+    ` · ${painting.strokes.length.toLocaleString()} strokes across ${brushCount(painting)} ${brushCount(painting) === 1 ? 'brush' : 'brushes'}, planned in ${(plannedIn / 1000).toFixed(1)} s.`,
   );
   playButton.disabled = false;
   // Autoplay is the point of the page, unless the visitor has asked for less motion.
@@ -248,7 +260,7 @@ function seek(count: number): void {
 
 function finish(): void {
   pause();
-  setStatus(`Done in ${Math.round(DURATION_MS / 1000)} seconds.`);
+  setStatus(`Done in ${Math.round(DURATION_MS[state.style] / 1000)} seconds.`);
   downloadButton.hidden = false;
 }
 
@@ -279,6 +291,10 @@ function progressText(count: number, elapsed: number): string {
   return `${count.toLocaleString()} of ${painting.strokes.length.toLocaleString()} strokes · brush ${Math.min(layer + 1, layers)} of ${layers} · ${seconds}s`;
 }
 
+function brushCount(current: Plan): number {
+  return current.layerSizes.filter((n) => n > 0).length;
+}
+
 function setStatus(text: string): void {
   status.textContent = text;
 }
@@ -305,11 +321,14 @@ function readHash(): State {
   const params = new URLSearchParams(location.hash.slice(1));
   const photo = photos.find((p) => p.id === params.get('photo')) ?? (photos[0] as Photo);
   const seed = Number(params.get('seed')) || 1;
+  const style = params.get('style');
   const brush = params.get('brush');
+  const chosenStyle: StyleName = isStyleName(style) ? style : 'painting';
   return {
     photo,
     seed,
-    brush: brush && brush in brushes ? (brush as BrushName) : 'bristle',
+    style: chosenStyle,
+    brush: brush && brush in brushes ? (brush as BrushName) : DEFAULT_BRUSH[chosenStyle],
   };
 }
 
@@ -318,6 +337,7 @@ function writeHash(): void {
   const params = new URLSearchParams({
     photo: state.photo.id,
     seed: String(state.seed),
+    style: state.style,
     brush: state.brush,
   });
   history.replaceState(null, '', `#${params}`);

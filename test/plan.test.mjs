@@ -7,6 +7,7 @@ import {
   meanDifference,
   plan,
   simulate,
+  styles,
 } from '../dist/index.js';
 import {edgeRaster, rampRaster} from './helpers.mjs';
 
@@ -109,4 +110,14 @@ test('seeded random is reproducible', () => {
     createRandom(1).shuffle([1, 2, 3, 4, 5]),
     createRandom(1).shuffle([1, 2, 3, 4, 5]),
   );
+});
+
+test('the underpainting style is one big brush with long strokes', () => {
+  const source = edgeRaster(320, 240);
+  const painting = plan(source, {...styles.underpainting.options(320, 240), seed: 1});
+  assert.equal(painting.layerSizes.length, 1);
+  assert.equal(painting.strokes[0].radius, 8);
+  const longest = Math.max(...painting.strokes.map((s) => s.points.length));
+  assert.ok(longest > 10, `longest stroke has ${longest} points`);
+  assert.ok(painting.strokes.length < plan(source, {seed: 1}).strokes.length);
 });

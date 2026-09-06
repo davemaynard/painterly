@@ -31,6 +31,11 @@ It finishes in 45 seconds at any size, then stops.
 - **Time to done, not time in app.** The painting plays on a fixed 45-second
   clock, the underpainting fast and the finest brush slow, and then it is
   finished. There is a Download button and nothing else to do.
+- **Or stop at the underpainting.** The *Underpainting* style plans the first,
+  biggest brush only, with longer strokes and a looser threshold, and keeps
+  the abstraction: a few hundred ribbons of colour that are unmistakably the
+  photo and nothing like it. It was meant as a stage on the way to a painting
+  and turned out to be the picture people liked.
 - **Your own photo.** Drop in a file. It is painted in the tab and never
   uploaded anywhere.
 
@@ -73,15 +78,16 @@ rendered by something other than the bundled painter.
 
 - `src/image/` measures the photo: a float RGB raster, a linear-time Gaussian
   blur (three box blurs), luminance and a Sobel gradient. No canvas, no DOM.
-- `src/plan/` decides the strokes. Aaron Hertzmann's
+- `src/plan/` decides the strokes, and names the two styles. Aaron Hertzmann's
   [*Painterly Rendering with Curved Brush Strokes of Multiple Sizes*](https://www.mrl.nyu.edu/publications/painterly98/)
   (SIGGRAPH 1998), ported and credited in the module header, with three habits
   kept from the 2020 sketches: a canvas primed with the photo's dominant hue
   family, a shuffled stroke order so the hand looks human, and seeded randomness.
 - `src/paint/` is the hand: a `Brush` says how many bristles a stroke becomes,
   how translucent, how far each hair's colour and weight wander, and how ragged
-  its start and finish are. `bristle` is the 2020 look, `round` is the
-  pointillist sketch that never finished, `flat` is a house-painter's brush.
+  its start and finish are. `bristle` is the 2020 look, `ribbon` is this port's
+  first brush and the underpainting's default, `round` is the pointillist sketch
+  that never finished, `flat` is a house-painter's brush.
 - `src/demo/` is the page: photo picker, a layer-paced schedule, a timeline
   that scrubs backwards from layer snapshots, and nothing else.
 - `processing/` holds the 2020 Processing sketches this grew out of, untouched.

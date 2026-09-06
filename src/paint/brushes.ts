@@ -37,6 +37,16 @@ export const brushes = {
     dots: false,
     ragged: 0.25,
   },
+  ribbon: {
+    name: 'ribbon',
+    bristles: 6,
+    spread: 0.8,
+    weight: [0.18, 0.5],
+    alpha: 0.6,
+    drift: 12,
+    dots: false,
+    ragged: 0,
+  },
   round: {
     name: 'round',
     bristles: 1,

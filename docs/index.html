@@ -27,7 +27,8 @@
       <p class="lede">
         Pick a photo and watch it get painted: a big brush lays in the underpainting, finer brushes
         return only where the picture still disagrees with the photo, and every stroke runs along
-        the image instead of across it. Same photo, same seed, same painting.
+        the image instead of across it. Or stop after the first brush and keep the abstraction.
+        Same photo, same seed, same painting.
       </p>
     </header>
 
@@ -54,19 +55,27 @@
           <legend>Photo</legend>
         </fieldset>
         <div class="side">
-          <label class="field">
-            <span>Brush</span>
+          <div class="field">
+            <label for="style">Style</label>
+            <select id="style">
+              <option value="painting">Painting: five brushes, to a likeness</option>
+              <option value="underpainting">Underpainting: the first brush only</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="brush">Brush</label>
             <select id="brush">
               <option value="bristle">Bristle</option>
+              <option value="ribbon">Ribbon</option>
               <option value="round">Round</option>
               <option value="flat">Flat</option>
             </select>
-          </label>
-          <label class="field file">
-            <span>Your own photo</span>
+          </div>
+          <div class="field file">
+            <label for="file">Your own photo</label>
             <input id="file" type="file" accept="image/*" />
             <small>Painted in your browser. It never leaves this tab.</small>
-          </label>
+          </div>
         </div>
       </section>
     </main>
