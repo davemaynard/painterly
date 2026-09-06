@@ -1,0 +1,60 @@
+{
+  "name": "painterly",
+  "version": "0.1.0",
+  "description": "Watch a photo get painted. Multi-size brush strokes that follow the image and converge on it, deterministic and dependency-free, in a browser canvas.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Dave Maynard",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/davemaynard/painterly.git"
+  },
+  "homepage": "https://davemaynard.github.io/painterly/",
+  "keywords": [
+    "painterly",
+    "painterly-rendering",
+    "brush-strokes",
+    "canvas",
+    "generative-art",
+    "hertzmann"
+  ],
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "NOTICE"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "check": "biome check . && tsc",
+    "format": "biome format --write .",
+    "pretest": "tsup",
+    "test": "node --test \"test/*.test.mjs\"",
+    "gif": "node scripts/record-demo.mjs"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.11",
+    "@types/node": "^26.4.1",
+    "mersenne-twister": "1.1.0",
+    "playwright": "^1.62.1",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

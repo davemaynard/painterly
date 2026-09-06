@@ -1,0 +1,7 @@
+painterly bundles the following third-party code into its distributed files.
+
+mersenne-twister (https://github.com/boo1ean/mersenne-twister)
+  The MT19937 reference implementation by Makoto Matsumoto and Takuji Nishimura,
+  wrapped for JavaScript by Sean McCullough and Evgeny Filatov.
+  Copyright (C) 1997 - 2002, Makoto Matsumoto and Takuji Nishimura. All rights reserved.
+  Licensed under the BSD 3-Clause License; the full notice is carried in the package's source.
