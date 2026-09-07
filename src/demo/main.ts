@@ -196,7 +196,7 @@ async function load(): Promise<void> {
   setStatus('Loading the photo…');
   // Every painting takes the same time whatever the photo, so the clock is
   // right before a single stroke has been planned.
-  showClock(DURATION_MS[state.style]);
+  showClock(0);
   caption.replaceChildren(...captionFor(state.photo));
 
   const image = await loadImage(state.photo.file);
@@ -364,15 +364,15 @@ function progressText(count: number): string {
   return `Brush ${Math.min(layer + 1, layers)} of ${layers}`;
 }
 
-/** How much playing time is left, against what the whole painting takes. */
+/** How far into the painting we are, against what the whole of it takes. */
 function updateClock(): void {
   if (!schedule || !painter) return;
-  showClock(schedule.duration - schedule.timeOf(painter.painted));
+  showClock(schedule.timeOf(painter.painted));
 }
 
-function showClock(remaining: number): void {
+function showClock(elapsed: number): void {
   const total = schedule?.duration ?? DURATION_MS[state.style];
-  clock.textContent = `${asMinutes(remaining)} / ${asMinutes(total)}`;
+  clock.textContent = `${asMinutes(elapsed)} / ${asMinutes(total)}`;
 }
 
 function asMinutes(ms: number): string {
