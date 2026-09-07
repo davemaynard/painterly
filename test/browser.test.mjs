@@ -51,7 +51,7 @@ test('the page paints: the canvas leaves the ground colour and reaches Done', as
   assert.ok(total > 10_000, `only ${total} strokes`);
   await seek(page, total);
   assert.notEqual(await canvasPng(page), ground);
-  await assert.doesNotReject(page.getByText('Done.').waitFor());
+  await assert.doesNotReject(page.getByText(/strokes, planned in/).waitFor());
   await assert.doesNotReject(page.getByRole('button', {name: 'Download PNG'}).waitFor());
   await page.close();
 });
@@ -105,7 +105,7 @@ test('the underpainting style stops after one brush and keeps its own URL', asyn
   const total = await strokeCount(page);
   assert.ok(total > 100 && total < 3000, `${total} strokes is not a single big brush`);
   assert.equal(await page.getByLabel('Brush', {exact: true}).inputValue(), 'ribbon');
-  await assert.doesNotReject(page.getByText(/across 1 brush,/).waitFor());
+  await assert.doesNotReject(page.getByText('Brush 1 of 1').waitFor());
   await page.getByLabel('Style', {exact: true}).selectOption('painting');
   await page.getByRole('button', {name: 'Pause'}).waitFor({timeout: 60_000});
   assert.ok((await strokeCount(page)) > 10_000);

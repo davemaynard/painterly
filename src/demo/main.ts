@@ -58,6 +58,8 @@ type State = {
 
 let state: State = readHash();
 let painting: Plan | null = null;
+/** How long the planner took, kept for the line shown when the painting finishes. */
+let plannedIn = 0;
 let painter: Painter | null = null;
 let schedule: Schedule | null = null;
 /** Canvas snapshots at layer boundaries, for scrubbing backwards. */
@@ -138,6 +140,12 @@ timeline.addEventListener('input', () => {
   pause();
   seek(Number(timeline.value));
 });
+// Letting go picks the painting up from where you dropped it: the timeline is a
+// way to move through the painting, not a way to stop it.
+timeline.addEventListener('change', () => {
+  if (!painting || !painter || painter.painted >= painting.strokes.length) return;
+  play();
+});
 document.addEventListener('keydown', (event) => {
   if (event.key === ' ' && event.target === document.body) {
     event.preventDefault();
@@ -177,7 +185,7 @@ async function load(): Promise<void> {
 
   const started = performance.now();
   painting = plan(source, {...styles[state.style].options(width, height), seed: state.seed});
-  const plannedIn = Math.round(performance.now() - started);
+  plannedIn = Math.round(performance.now() - started);
   schedule = createSchedule(painting, DURATION_MS[state.style]);
   timeline.max = String(painting.strokes.length);
   timeline.value = '0';
@@ -185,9 +193,6 @@ async function load(): Promise<void> {
   timeline.dataset.layers = painting.layerSizes.join(',');
   timeline.disabled = false;
   startPainter(painting);
-  caption.append(
-    ` · ${painting.strokes.length.toLocaleString()} strokes across ${brushCount(painting)} ${brushCount(painting) === 1 ? 'brush' : 'brushes'}, planned in ${(plannedIn / 1000).toFixed(1)} s.`,
-  );
   playButton.disabled = false;
   // Autoplay is the point of the page, unless the visitor has asked for less motion.
   if (matchMedia('(prefers-reduced-motion: reduce)').matches) setStatus('Ready. Press play.');
@@ -234,7 +239,7 @@ function tick(now: number): void {
     finish();
     return;
   }
-  setStatus(progressText(painter.painted, elapsed));
+  setStatus(progressText(painter.painted));
   frame = requestAnimationFrame(tick);
 }
 
@@ -264,15 +269,13 @@ function seek(count: number): void {
   timeline.value = String(painter.painted);
   downloadButton.hidden = painter.painted < painting.strokes.length;
   setStatus(
-    painter.painted >= painting.strokes.length
-      ? 'Done.'
-      : progressText(painter.painted, schedule.timeOf(painter.painted)),
+    painter.painted >= painting.strokes.length ? finishedText() : progressText(painter.painted),
   );
 }
 
 function finish(): void {
   pause();
-  setStatus(`Done in ${Math.round(DURATION_MS[state.style] / 1000)} seconds.`);
+  setStatus(finishedText());
   downloadButton.hidden = false;
 }
 
@@ -289,7 +292,7 @@ downloadButton.addEventListener('click', () => {
 
 // ---- small helpers ----------------------------------------------------------
 
-function progressText(count: number, elapsed: number): string {
+function progressText(count: number): string {
   if (!painting) return '';
   let layer = 0;
   let boundary = 0;
@@ -298,9 +301,14 @@ function progressText(count: number, elapsed: number): string {
     if (count < boundary) break;
     layer++;
   }
-  const layers = painting.layerSizes.filter((s) => s > 0).length;
-  const seconds = Math.round(elapsed / 1000);
-  return `${count.toLocaleString()} of ${painting.strokes.length.toLocaleString()} strokes · brush ${Math.min(layer + 1, layers)} of ${layers} · ${seconds}s`;
+  const layers = brushCount(painting);
+  return `Brush ${Math.min(layer + 1, layers)} of ${layers}`;
+}
+
+/** The one number worth keeping, shown once the picture is finished. */
+function finishedText(): string {
+  if (!painting) return '';
+  return `${painting.strokes.length.toLocaleString()} strokes, planned in ${(plannedIn / 1000).toFixed(1)} s`;
 }
 
 function brushCount(current: Plan): number {
@@ -311,13 +319,14 @@ function setStatus(text: string): void {
   status.textContent = text;
 }
 
+/** The photo's own row already names it, so the caption carries only the credit. */
 function captionFor(photo: State['photo']): (string | Node)[] {
-  if (!photo.credit) return [photo.caption];
+  if (!photo.credit) return [];
   const link = document.createElement('a');
   link.href = photo.credit.url;
   link.textContent = photo.credit.name;
   link.rel = 'noopener';
-  return [`${photo.caption}. Photo by `, link, ' on Unsplash.'];
+  return ['Photo by ', link, ' on Unsplash.'];
 }
 
 function loadImage(src: string): Promise<HTMLImageElement> {

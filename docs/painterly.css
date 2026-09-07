@@ -1,18 +1,26 @@
-/* painterly demo page. Tokens first, then one block per piece of the page. */
+/* painterly demo page.
+   A fixed rail holds everything you touch, the picture takes the rest of the
+   window, and the transport never leaves the first screen whatever shape the
+   photo is. Set as a printed sheet: a display serif, ruled bands, uppercase
+   margin labels, hairlines instead of boxes. Tokens first, then one block per
+   piece of the page. */
 
 :root {
   color-scheme: light dark;
-  /* Warm greys, not cream: the page stays neutral so the paintings carry the colour. */
   --paper: #f4f3f0;
   --ink: #1c1b19;
   --muted: #6b6965;
   --line: #d8d6d1;
-  --accent: var(--ink);
-  --accent-ink: var(--paper);
-  --sans: "IBM Plex Sans", system-ui, sans-serif;
-  --mono: "IBM Plex Mono", ui-monospace, monospace;
-  --measure: 60ch;
-  --page-top: clamp(1rem, 3vw, 2.5rem);
+
+  /* Two surfaces from the same two colours: the rail you work on, and the
+     quieter ground the picture hangs on. */
+  --rail: color-mix(in oklab, var(--paper) 97%, var(--ink));
+  --ground: color-mix(in oklab, var(--paper) 91%, var(--ink));
+
+  --display: "Instrument Serif", Georgia, serif;
+  --sans: "Instrument Sans", system-ui, sans-serif;
+  --ease: cubic-bezier(0.23, 1, 0.32, 1);
+  --rail-width: 20rem;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -21,6 +29,8 @@
     --ink: #ebe9e4;
     --muted: #9a9893;
     --line: #2b2a28;
+    --rail: color-mix(in oklab, var(--paper) 94%, var(--ink));
+    --ground: var(--paper);
   }
 }
 
@@ -30,17 +40,10 @@
 
 body {
   margin: 0;
-  padding: var(--page-top) clamp(1rem, 4vw, 3rem) 3rem;
-  background: var(--paper);
+  background: var(--ground);
   color: var(--ink);
-  font: 400 1rem / 1.5 var(--sans);
-  max-width: 72rem;
-  margin-inline: auto;
-}
-
-a {
-  color: inherit;
-  text-underline-offset: 0.15em;
+  font: 400 1rem / 1.55 var(--sans);
+  scrollbar-color: var(--line) transparent;
 }
 
 ::selection {
@@ -53,211 +56,86 @@ a {
   outline-offset: 3px;
 }
 
-/* The fold: on a desktop the masthead, painting and controls share the first
-   screen whatever the photo's shape. The canvas takes the height left over. */
-
-@media (min-width: 60rem) {
-  .fold {
-    display: grid;
-    grid-template-rows: auto minmax(0, 1fr) auto auto auto;
-    height: calc(100svh - var(--page-top));
-  }
+a {
+  color: inherit;
+  text-underline-offset: 0.2em;
+  text-decoration-color: var(--line);
+  transition: text-decoration-color 150ms var(--ease);
 }
 
-/* Masthead */
-
-@media (min-width: 60rem) {
-  .masthead {
-    display: grid;
-    grid-template-columns: 1fr 2fr;
-    gap: 0 3rem;
-    align-items: start;
-  }
-  .masthead h1 {
-    grid-row: 1 / 3;
-  }
+.app {
+  height: 100svh;
+  display: grid;
+  grid-template-columns: var(--rail-width) minmax(0, 1fr);
 }
 
-.masthead h1 {
-  font: 500 clamp(2rem, 5vw, 3rem) / 1 var(--mono);
+/* The rail. Bands separated by rules, each named in the margin's voice. */
+
+.rail {
+  background: var(--rail);
+  border-right: 1px solid var(--line);
+  padding: 2rem 1.75rem;
+  overflow-y: auto;
+  display: grid;
+  grid-template-rows: auto auto auto 1fr;
+  gap: 1.75rem;
+  align-content: start;
+}
+
+.brand h1 {
+  font: 400 2.25rem / 1 var(--display);
   letter-spacing: -0.02em;
   margin: 0 0 0.75rem;
 }
 
-.definition {
-  max-width: var(--measure);
-  margin: 0 0 0.75rem;
-  font-size: 1.0625rem;
-}
-
-.definition em {
-  color: var(--muted);
-  font-style: italic;
-}
-
-.lede {
-  max-width: var(--measure);
-  margin: 0 0 1.5rem;
-  color: var(--muted);
-}
-
-/* Stage */
-
-.stage {
+.brand p {
   margin: 0;
-  min-height: 0;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-}
-
-.stage canvas {
-  display: block;
-  max-width: 100%;
-  max-height: 100%;
-  width: auto;
-  height: auto;
-  border-radius: 2px;
-  box-shadow:
-    0 1px 2px rgb(0 0 0 / 0.1),
-    0 12px 32px -16px rgb(0 0 0 / 0.35);
-}
-
-@media (max-width: 59.99rem) {
-  .stage canvas {
-    max-height: 70svh;
-  }
-}
-
-/* Controls */
-
-.controls {
-  border: 0;
-  padding: 0;
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  margin-top: 1rem;
-  flex-wrap: wrap;
-}
-
-.controls button {
-  font: 500 0.9375rem / 1 var(--sans);
-  padding: 0.6rem 1rem;
-  border-radius: 999px;
-  border: 1px solid var(--line);
-  background: transparent;
-  color: var(--ink);
-  cursor: pointer;
-  transition:
-    border-color 150ms,
-    background-color 150ms;
-}
-
-.controls button:not(:disabled):hover {
-  border-color: var(--ink);
-}
-
-.controls button:disabled {
-  opacity: 0.45;
-  cursor: default;
-}
-
-#play {
-  min-width: 5.5rem;
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--accent-ink);
-}
-
-#play:not(:disabled):hover {
-  background: color-mix(in oklab, var(--accent) 85%, var(--paper));
-  border-color: transparent;
-}
-
-#play[aria-pressed="true"] {
-  background: transparent;
-  color: var(--ink);
-  border-color: var(--line);
-}
-
-#play[aria-pressed="true"]:hover {
-  border-color: var(--ink);
-}
-
-.timeline {
-  flex: 1 1 12rem;
-  display: flex;
-}
-
-.timeline input {
-  width: 100%;
-  margin: 0;
-  accent-color: var(--accent);
-}
-
-/* On a phone the timeline takes its own row, like a video scrubber under the
-   picture, and the buttons share the row beneath it. */
-@media (max-width: 47.99rem) {
-  .controls {
-    gap: 0.75rem 0.5rem;
-  }
-  .timeline {
-    flex-basis: 100%;
-    order: -1;
-  }
-  .controls button {
-    font-size: 0.875rem;
-    padding: 0.55rem 0.85rem;
-  }
-  #play {
-    min-width: 0;
-  }
-}
-
-.status,
-.caption {
-  font: 400 0.875rem / 1.4 var(--mono);
+  font-size: 0.8125rem;
+  line-height: 1.6;
   color: var(--muted);
-  margin: 0.5rem 0 0;
 }
 
-/* Picker */
-
-.picker {
-  margin-top: 2.5rem;
-  padding-top: 1.5rem;
+.band {
   border-top: 1px solid var(--line);
+  padding-top: 1.5rem;
 }
+
+legend,
+.band h2 {
+  font: 500 0.75rem / 1 var(--sans);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding: 0;
+  margin: 0 0 1rem;
+  float: left;
+  width: 100%;
+}
+
+/* Subjects: a list of rows, the way a tool lists what it is pointed at. */
 
 .photos {
-  border: 0;
-  padding: 0;
+  border-inline: 0;
+  border-bottom: 0;
   margin: 0;
+  padding-inline: 0;
+  padding-bottom: 0;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
-  align-content: start;
-  gap: 0.75rem;
-}
-
-.photos legend,
-.field > label {
-  font: 500 0.75rem / 1 var(--mono);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--muted);
-  margin-bottom: 0.75rem;
-  display: block;
+  gap: 0.25rem;
 }
 
 .photo {
   position: relative;
   display: grid;
-  align-content: start;
-  gap: 0.4rem;
+  grid-template-columns: 2.75rem 1fr;
+  align-items: center;
+  gap: 0.875rem;
+  padding: 0.25rem 0;
   cursor: pointer;
   font-size: 0.8125rem;
-  line-height: 1.3;
+  line-height: 1.35;
+  color: var(--muted);
+  transition: color 150ms var(--ease);
 }
 
 .photo input {
@@ -269,96 +147,330 @@ a {
 }
 
 .photo .thumb {
-  display: block;
-  width: 100%;
-  aspect-ratio: 4 / 3;
+  width: 2.75rem;
+  height: 2.75rem;
   object-fit: cover;
-  border-radius: 2px;
-  outline: 2px solid transparent;
-  outline-offset: 2px;
+  filter: saturate(0.85);
+  outline: 1px solid transparent;
   transition:
-    outline-color 150ms,
-    border-color 150ms,
-    color 150ms;
+    filter 200ms var(--ease),
+    outline-color 150ms var(--ease);
 }
 
-.photo:hover .thumb {
-  outline-color: var(--line);
+.photo > span:last-child {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
-.photo input:checked + .thumb {
-  outline-color: var(--ink);
-}
-
-.photo input:focus-visible + .thumb {
-  outline-color: var(--ink);
-  box-shadow:
-    0 0 0 4px var(--paper),
-    0 0 0 6px var(--ink);
-}
-
-.photo small {
-  display: block;
-  margin-top: 0.15rem;
-  color: var(--muted);
-  font-size: 0.75rem;
-}
-
-/* The fifth tile: an empty frame for the visitor's own photo. */
 .own .thumb {
   display: grid;
   place-items: center;
   border: 1px dashed var(--line);
-  color: var(--muted);
 }
 
-.own:hover .thumb {
-  outline-color: transparent;
-  border-color: var(--ink);
+.own small {
+  display: block;
+  font-size: 0.6875rem;
+}
+
+/* Chosen: the picture comes back to full colour and the line goes to ink. */
+.photo:has(input:checked) {
   color: var(--ink);
 }
 
-.settings {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1.5rem;
-  margin-top: 1.75rem;
+.photo input:checked + .thumb {
+  filter: none;
+  outline-color: var(--ink);
 }
 
-.field {
-  flex: 1 1 16rem;
-  max-width: 22rem;
+.photo input:focus-visible + .thumb {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  a:hover {
+    text-decoration-color: var(--ink);
+  }
+  .photo:hover {
+    color: var(--ink);
+  }
+  .photo:hover .thumb {
+    filter: none;
+  }
+  .own:hover .thumb {
+    border-color: var(--ink);
+  }
+}
+
+/* Settings: ruled entries, not boxes. */
+
+.fields {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.field > label {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin-bottom: 0.25rem;
+}
+
+/* A drawn caret instead of the platform's, so the control belongs to the page. */
+.select {
+  display: grid;
+  align-items: center;
+}
+
+.select select,
+.select::after {
+  grid-area: 1 / 1;
+}
+
+.select::after {
+  content: "";
+  justify-self: end;
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 5px solid var(--muted);
+  pointer-events: none;
 }
 
 .field select {
+  appearance: none;
   display: block;
   width: 100%;
-  font: inherit;
+  font: 400 0.9375rem / 1.4 var(--sans);
   color: inherit;
-  padding: 0.5rem 0.6rem;
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  background: transparent;
-  transition: border-color 150ms;
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  padding: 0.3rem 1.5rem 0.3rem 0;
+  cursor: pointer;
+  transition: border-color 150ms var(--ease);
 }
 
 .field select:hover {
-  border-color: var(--ink);
+  border-bottom-color: var(--ink);
 }
-
-/* Colophon */
 
 .colophon {
-  margin-top: 3rem;
+  align-self: end;
+  margin: 0;
   padding-top: 1.5rem;
   border-top: 1px solid var(--line);
+  font-size: 0.75rem;
+  line-height: 1.6;
   color: var(--muted);
-  font-size: 0.875rem;
 }
 
-.colophon p {
-  max-width: var(--measure);
+/* The viewer: a running head, the plate, and a transport that stays put. */
+
+.viewer {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  min-height: 0;
+  padding: 0 2rem;
+}
+
+.runner {
+  display: flex;
+  gap: 1rem;
+  padding: 1.5rem 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.readout {
+  font-variant-numeric: tabular-nums;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 0.8125rem;
+  white-space: nowrap;
+}
+
+.frame {
   margin: 0;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  padding: 1.75rem 0.75rem;
+}
+
+.frame canvas {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  outline: 1px solid var(--line);
+  outline-offset: 0.75rem;
+}
+
+.caption {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--muted);
+  min-height: 1.2em;
+}
+
+.transport {
+  border: 0;
+  border-top: 1px solid var(--line);
+  margin: 1rem 0 0;
+  padding: 0.875rem 0 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.transport button {
+  font: 500 0.875rem / 1 var(--sans);
+  color: var(--ink);
+  background: none;
+  border: 0;
+  padding: 0.45rem 0;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    transform 160ms var(--ease),
+    opacity 150ms var(--ease);
+}
+
+.transport button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.transport button:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+#play {
+  padding: 0.45rem 1.25rem;
+  background: var(--ink);
+  color: var(--paper);
+  min-width: 5.75rem;
+}
+
+#play[aria-pressed="true"] {
+  background: none;
+  color: var(--ink);
+  box-shadow: inset 0 0 0 1px var(--ink);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .transport button:not(#play):not(:disabled):hover {
+    text-decoration: underline;
+    text-underline-offset: 0.3em;
+  }
+  #play:not(:disabled):hover {
+    background: color-mix(in oklab, var(--ink) 84%, var(--paper));
+  }
+  #play[aria-pressed="true"]:hover {
+    background: color-mix(in oklab, var(--ink) 6%, transparent);
+  }
+}
+
+/* Timeline: a printer's rule with a tick riding along it. */
+
+.timeline {
+  flex: 1;
+  display: flex;
+  min-width: 4rem;
+}
+
+.timeline input {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 1.5rem;
+  margin: 0;
+  background: none;
+  cursor: pointer;
+}
+
+.timeline input:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+.timeline input::-webkit-slider-runnable-track {
+  height: 2px;
+  background: var(--line);
+}
+
+.timeline input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 2px;
+  height: 14px;
+  margin-top: -6px;
+  border-radius: 0;
+  background: var(--ink);
+}
+
+.timeline input::-moz-range-track {
+  height: 2px;
+  background: var(--line);
+}
+
+.timeline input::-moz-range-thumb {
+  width: 2px;
+  height: 14px;
+  border: 0;
+  border-radius: 0;
+  background: var(--ink);
+}
+
+/* Narrow: the bench unfolds. Picture and transport first, rail beneath. */
+
+@media (max-width: 55rem) {
+  .app {
+    height: auto;
+    grid-template-columns: 1fr;
+  }
+  .viewer {
+    order: -1;
+    padding: 0 1.25rem;
+  }
+  .runner span:first-child {
+    display: none;
+  }
+  .frame {
+    padding: 1.5rem 0;
+  }
+  .frame canvas {
+    max-height: 56svh;
+  }
+  .transport {
+    flex-wrap: wrap;
+    gap: 0.75rem 1.5rem;
+  }
+  .timeline {
+    flex-basis: 100%;
+    order: -1;
+  }
+  .rail {
+    border-right: 0;
+    border-top: 1px solid var(--line);
+    overflow: visible;
+    grid-template-rows: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .transport button:active:not(:disabled) {
+    transform: none;
+  }
 }
 
 .visually-hidden {
