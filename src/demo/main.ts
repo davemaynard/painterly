@@ -70,8 +70,9 @@ let painting: Plan | null = null;
 let plannedIn = 0;
 let painter: Painter | null = null;
 let schedule: Schedule | null = null;
-/** Canvas snapshots to scrub backwards from, at layer boundaries and in between. */
-let snapshots: {count: number; image: ImageBitmap}[] = [];
+/** The canvas as it stood after `count` strokes, to seek from without repainting. */
+type Snapshot = {count: number; image: ImageBitmap};
+let snapshots: Snapshot[] = [];
 /** How many strokes apart those snapshots are taken. */
 let snapshotEvery = Number.POSITIVE_INFINITY;
 let playing = false;
@@ -303,8 +304,15 @@ function marksBetween(from: number, to: number): number[] {
 
 function seek(count: number): void {
   if (!painting || !painter || !schedule) return;
-  if (count < painter.painted) {
-    const nearest = snapshots.filter((s) => s.count <= count).sort((a, b) => b.count - a.count)[0];
+  // Start from the nearest snapshot at or before the target, whichever side of
+  // the playhead it sits on. Jumping forward across one costs exactly as much
+  // as scrubbing back behind it: both repaint every stroke in between.
+  let nearest: Snapshot | undefined;
+  for (const snapshot of snapshots) {
+    if (snapshot.count <= count && (!nearest || snapshot.count > nearest.count)) nearest = snapshot;
+  }
+  const from = nearest?.count ?? 0;
+  if (from > painter.painted || count < painter.painted) {
     if (nearest) painter.resume(nearest.image, nearest.count);
     else painter.reset();
   }

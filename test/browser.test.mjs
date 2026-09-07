@@ -82,6 +82,22 @@ test('scrubbing backwards lands on the same pixels as painting forward', async (
   await page.close();
 });
 
+test('jumping forward lands on the same pixels as painting the way there', async () => {
+  // One page paints its way to the target from near the start; the other has
+  // played through, so it resumes from the nearest snapshot and paints the rest.
+  const painted = await open('photo=oranges&seed=1');
+  const jumped = await open('photo=oranges&seed=1');
+  const total = await strokeCount(painted);
+  const target = Math.floor(total * 0.8);
+  await seek(painted, target);
+  await seek(jumped, total);
+  await seek(jumped, 0);
+  await seek(jumped, target);
+  assert.equal(await canvasPng(jumped), await canvasPng(painted));
+  await painted.close();
+  await jumped.close();
+});
+
 test('a different seed paints a different picture', async () => {
   const a = await open('photo=boats&seed=1');
   const b = await open('photo=boats&seed=2');
