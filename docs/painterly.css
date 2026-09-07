@@ -380,6 +380,15 @@ legend,
   }
 }
 
+/* The time left, against the time the whole painting takes. Tabular, so the
+   digits do not shuffle as they count down. */
+.clock {
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
 /* Timeline: a printer's rule with a tick riding along it. */
 
 .timeline {

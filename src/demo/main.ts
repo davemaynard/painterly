@@ -55,6 +55,7 @@ const photoList = $<HTMLElement>('#photos');
 const ownTile = $<HTMLElement>('#own');
 const fileInput = $<HTMLInputElement>('#file');
 const status = $<HTMLElement>('#status');
+const clock = $<HTMLElement>('#clock');
 const caption = $<HTMLElement>('#caption');
 
 type State = {
@@ -193,6 +194,9 @@ async function load(): Promise<void> {
   snapshots = [];
   downloadButton.hidden = true;
   setStatus('Loading the photo…');
+  // Every painting takes the same time whatever the photo, so the clock is
+  // right before a single stroke has been planned.
+  showClock(DURATION_MS[state.style]);
   caption.replaceChildren(...captionFor(state.photo));
 
   const image = await loadImage(state.photo.file);
@@ -225,6 +229,7 @@ async function load(): Promise<void> {
   snapshotEvery = Math.max(1000, Math.ceil(painting.strokes.length / most));
   startPainter(painting);
   playButton.disabled = false;
+  updateClock();
   // Autoplay is the point of the page, unless the visitor has asked for less motion.
   if (matchMedia('(prefers-reduced-motion: reduce)').matches) setStatus('Ready. Press play.');
   else play();
@@ -266,6 +271,7 @@ function tick(now: number): void {
   const target = schedule.strokesAt(elapsed);
   paintForwardTo(target);
   timeline.value = String(painter.painted);
+  updateClock();
   if (painter.painted >= painting.strokes.length) {
     finish();
     return;
@@ -318,6 +324,7 @@ function seek(count: number): void {
   }
   paintForwardTo(count);
   timeline.value = String(painter.painted);
+  updateClock();
   downloadButton.hidden = painter.painted < painting.strokes.length;
   setStatus(
     painter.painted >= painting.strokes.length ? finishedText() : progressText(painter.painted),
@@ -326,6 +333,7 @@ function seek(count: number): void {
 
 function finish(): void {
   pause();
+  updateClock();
   setStatus(finishedText());
   downloadButton.hidden = false;
 }
@@ -354,6 +362,22 @@ function progressText(count: number): string {
   }
   const layers = brushCount(painting);
   return `Brush ${Math.min(layer + 1, layers)} of ${layers}`;
+}
+
+/** How much playing time is left, against what the whole painting takes. */
+function updateClock(): void {
+  if (!schedule || !painter) return;
+  showClock(schedule.duration - schedule.timeOf(painter.painted));
+}
+
+function showClock(remaining: number): void {
+  const total = schedule?.duration ?? DURATION_MS[state.style];
+  clock.textContent = `${asMinutes(remaining)} / ${asMinutes(total)}`;
+}
+
+function asMinutes(ms: number): string {
+  const seconds = Math.max(0, Math.round(ms / 1000));
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
 }
 
 /** The one number worth keeping, shown once the picture is finished. */
