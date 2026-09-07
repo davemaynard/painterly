@@ -17,13 +17,15 @@ const STALL_MS = 200;
 
 const settle = () => new Promise((resolve) => setImmediate(resolve));
 
+let taken = 0;
+/** A copy of the canvas, arriving the way a real one does: later. */
+const copy = () => Promise.resolve({id: taken++});
+
 function cacheFor(strokes, options = {}) {
-  let taken = 0;
   const released = [];
   const cache = createSnapshots({
     strokes,
     bytesEach: FRAME_BYTES,
-    capture: async () => ({id: taken++}),
     release: (image) => released.push(image),
     ...options,
   });
@@ -32,7 +34,7 @@ function cacheFor(strokes, options = {}) {
 
 /** Play the whole painting through, keeping a copy at every mark on the way. */
 async function playThrough(cache, strokes) {
-  for (const mark of cache.marksBetween(0, strokes)) cache.record(mark);
+  for (const mark of cache.marksBetween(0, strokes)) cache.keep(mark, copy());
   await settle();
 }
 
@@ -105,4 +107,15 @@ test('clearing lets every copy go', async () => {
   assert.equal(released.length, held);
   assert.equal(cache.size, 0);
   assert.equal(cache.nearest(STROKES), undefined);
+});
+
+test('a copy that arrives after everything was let go is released, not kept', async () => {
+  const {cache, released} = cacheFor(STROKES);
+  const late = copy();
+  cache.keep(cache.every, late);
+  cache.keep(cache.every, copy());
+  cache.clear();
+  await settle();
+  assert.equal(cache.size, 0);
+  assert.deepEqual(released, [await late]);
 });

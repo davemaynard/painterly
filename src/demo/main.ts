@@ -62,9 +62,6 @@ let plannedIn = 0;
 let player: Player | null = null;
 /** Counts the loads, so a photo swapped mid-load does not paint the old one. */
 let loading = 0;
-/** Where the timeline was dragged to, waiting for the next frame to be painted. */
-let pendingSeek: number | null = null;
-let seekFrame = 0;
 
 // ---- photo picker -----------------------------------------------------------
 
@@ -139,17 +136,17 @@ brushSelect.addEventListener('change', () => {
 
 timeline.addEventListener('input', () => {
   if (!player) return;
+  // Move before pausing. Pausing reports a state, and the report would put the
+  // thumb back where the painting was, throwing away the position the visitor
+  // just chose; the browser then sees no change to commit on release, and the
+  // painting would stay paused as well.
+  player.seek(Number(timeline.value));
   player.pause();
-  // A drag fires an event per mouse move, and repainting for each one is work
-  // the visitor never sees. Keep the newest position and paint it once a frame.
-  pendingSeek = Number(timeline.value);
-  if (!seekFrame) seekFrame = requestAnimationFrame(flushSeek);
 });
 
 // Letting go picks the painting up from where you dropped it: the timeline is a
 // way to move through the painting, not a way to stop it.
 timeline.addEventListener('change', () => {
-  flushSeek();
   if (!player || player.state.finished) return;
   player.play();
 });
@@ -171,16 +168,6 @@ downloadButton.addEventListener('click', () => {
     URL.revokeObjectURL(link.href);
   }, 'image/png');
 });
-
-/** Paint the position the timeline is sitting at, if it has moved since the last frame. */
-function flushSeek(): void {
-  cancelAnimationFrame(seekFrame);
-  seekFrame = 0;
-  if (pendingSeek === null || !player) return;
-  const to = pendingSeek;
-  pendingSeek = null;
-  player.seek(to);
-}
 
 // ---- loading and planning ---------------------------------------------------
 
@@ -243,13 +230,17 @@ async function load(): Promise<void> {
 // ---- what the page says -----------------------------------------------------
 
 function render(view: PlayerState): void {
-  // While the visitor is dragging, the thumb belongs to them, not to the painting.
-  if (pendingSeek === null) timeline.value = String(view.painted);
+  // Written only when it differs, so a report during a drag never touches the
+  // control the visitor is holding.
+  const at = String(view.position);
+  if (timeline.value !== at) timeline.value = at;
+  // Where the canvas actually is, for tooling that has to wait for it to catch up.
+  timeline.dataset.painted = String(view.painted);
   playButton.textContent = view.playing ? 'Pause' : 'Play';
   playButton.setAttribute('aria-pressed', String(view.playing));
   downloadButton.hidden = !view.finished;
   showClock(view.elapsed, player?.duration ?? DURATION_MS[state.style]);
-  setStatus(view.finished ? finishedText() : progressText(view.painted));
+  setStatus(view.finished ? finishedText() : progressText(view.position));
 }
 
 /** Which brush is working. How far along the painting is, the timeline already shows. */

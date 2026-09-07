@@ -31,14 +31,23 @@ async function open(hash, viewport = {width: 1280, height: 900}) {
   return page;
 }
 
-/** Drags the timeline to `count` strokes and waits for the frame that paints them. */
+/** Drags the timeline to `count` strokes and waits until the canvas has caught up. */
 async function seek(page, count) {
-  await page.getByRole('slider', {name: 'Timeline'}).evaluate((input, value) => {
+  const timeline = page.getByRole('slider', {name: 'Timeline'});
+  await timeline.evaluate((input, value) => {
     input.value = String(value);
     input.dispatchEvent(new Event('input', {bubbles: true}));
-    // The page coalesces a drag into one repaint per frame.
-    return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
   }, count);
+  await timeline.evaluate(caughtUp);
+}
+
+/** Resolves once the canvas shows the strokes the timeline is set to. Runs in the page. */
+function caughtUp(input) {
+  return new Promise((resolve) => {
+    const check = () =>
+      input.dataset.painted === input.value ? resolve() : requestAnimationFrame(check);
+    requestAnimationFrame(check);
+  });
 }
 
 const canvasPng = (page) => page.evaluate(() => document.querySelector('canvas').toDataURL());
@@ -143,5 +152,47 @@ test('at phone width nothing overflows and the controls are reachable', async ()
     assert.ok(await page.getByRole('button', {name}).isVisible(), `${name} is visible`);
   }
   assert.ok(await page.getByRole('radio', {name: /golden retriever/}).isChecked());
+  await page.close();
+});
+
+test('clicking the timeline while playing jumps there and keeps playing', async () => {
+  const page = await open('photo=mist&seed=1');
+  await page.getByRole('button', {name: 'Play'}).click();
+  const timeline = page.getByRole('slider', {name: 'Timeline'});
+  const total = await strokeCount(page);
+  const box = await timeline.boundingBox();
+  // A real click, not a synthetic event. The bug this guards against was the
+  // page writing the old position back into the slider mid-click, after which
+  // the browser saw nothing to commit on release and the painting stayed paused.
+  await page.mouse.click(box.x + box.width * 0.7, box.y + box.height / 2);
+  await timeline.evaluate(caughtUp);
+  const landed = Number(await timeline.inputValue());
+  assert.ok(landed > total * 0.6 && landed < total * 0.85, `landed at ${landed} of ${total}`);
+  await assert.doesNotReject(page.getByRole('button', {name: 'Pause'}).waitFor({timeout: 1000}));
+  await page.waitForTimeout(400);
+  const later = Number(await timeline.inputValue());
+  assert.ok(later > landed, `the painting stopped at ${landed}`);
+  await page.close();
+});
+
+test('a jump forward on a fresh page never blocks a frame for long', async () => {
+  const page = await browser.newPage({viewport: {width: 1280, height: 900}});
+  await page.addInitScript(() => {
+    window.longTasks = [];
+    new PerformanceObserver((list) => {
+      for (const entry of list.getEntries()) window.longTasks.push(Math.round(entry.duration));
+    }).observe({type: 'longtask'});
+  });
+  await page.goto(`${site.url}/#photo=golden&seed=1`);
+  await page.getByRole('button', {name: 'Pause'}).waitFor({timeout: 60_000});
+  // Planning is one long task by nature; the jump must not be another.
+  await page.evaluate(() => window.longTasks.splice(0));
+  const timeline = page.getByRole('slider', {name: 'Timeline'});
+  const box = await timeline.boundingBox();
+  await page.mouse.click(box.x + box.width * 0.9, box.y + box.height / 2);
+  await timeline.evaluate(caughtUp);
+  const tasks = await page.evaluate(() => window.longTasks);
+  const longest = Math.max(0, ...tasks);
+  assert.ok(longest < 100, `a frame blocked for ${longest} ms (${tasks.join(', ')})`);
   await page.close();
 });

@@ -16,8 +16,8 @@ export type Snapshots<Image> = {
   readonly size: number;
   /** The stroke counts in `(from, to]` that deserve a copy, in order. */
   marksBetween(from: number, to: number): number[];
-  /** Keep the canvas as it stands now, which is `count` strokes in. */
-  record(count: number): void;
+  /** Keep `image`, a copy of the canvas as it stood after `count` strokes. */
+  keep(count: number, image: Promise<Image>): void;
   /** The nearest copy at or before `count`, if one has been taken. */
   nearest(count: number): Snapshot<Image> | undefined;
   /** Let every copy go. */
@@ -29,8 +29,6 @@ export type SnapshotOptions<Image> = {
   strokes: number;
   /** What one copy of the canvas costs in memory. */
   bytesEach: number;
-  /** Copy the canvas as it is at this moment. */
-  capture: () => Promise<Image>;
   /** Release a copy that is no longer wanted. */
   release: (image: Image) => void;
   /** How much memory the copies may take between them. */
@@ -58,12 +56,15 @@ const LEAST = 1000;
  * after the timeline moves.
  */
 export function createSnapshots<Image>(options: SnapshotOptions<Image>): Snapshots<Image> {
-  const {strokes, bytesEach, capture, release} = options;
+  const {strokes, bytesEach, release} = options;
   const budget = options.budgetBytes ?? BUDGET_BYTES;
   const affordable = Math.floor(budget / Math.max(1, bytesEach));
   const keep = Math.max(4, Math.min(options.most ?? MOST, affordable));
   const every = Math.max(options.least ?? LEAST, Math.ceil(Math.max(1, strokes) / keep));
   let held: Snapshot<Image>[] = [];
+  /** Counts with a copy held or on its way, so no stretch is copied twice. */
+  const taken = new Set<number>();
+  let generation = 0;
 
   return {
     every,
@@ -77,11 +78,15 @@ export function createSnapshots<Image>(options: SnapshotOptions<Image>): Snapsho
       return marks;
     },
 
-    record(count) {
-      if (held.some((snapshot) => snapshot.count === count)) return;
-      // The copy is taken of the canvas as it is at this call, so the painting
-      // may carry on before the copy itself arrives.
-      void capture().then((image) => held.push({count, image}));
+    keep(count, image) {
+      if (taken.has(count)) return;
+      taken.add(count);
+      const wanted = generation;
+      // The copy arrives later. If everything was let go in the meantime, so is it.
+      void image.then((resolved) => {
+        if (wanted === generation) held.push({count, image: resolved});
+        else release(resolved);
+      });
     },
 
     nearest(count) {
@@ -95,6 +100,8 @@ export function createSnapshots<Image>(options: SnapshotOptions<Image>): Snapsho
     clear() {
       for (const {image} of held) release(image);
       held = [];
+      taken.clear();
+      generation++;
     },
   };
 }
