@@ -34,11 +34,15 @@ export {
   defaultRadii,
   isStyleName,
   meanDifference,
+  type PackedPlan,
   type PlanOptions,
+  packedBuffers,
+  packPlan,
   plan,
   type StyleName,
   simulate,
   styles,
+  unpackPlan,
 } from './plan';
 export {createRandom, jitter, type Random} from './random';
 export type {Plan, Point, Rgb, Stroke} from './types';

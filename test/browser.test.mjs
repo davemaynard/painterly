@@ -196,3 +196,58 @@ test('a jump forward on a fresh page never blocks a frame for long', async () =>
   assert.ok(longest < 100, `a frame blocked for ${longest} ms (${tasks.join(', ')})`);
   await page.close();
 });
+
+test('while a photo is planned the picture shows the photo, the rule fills, then it paints', async () => {
+  const page = await open('photo=mist&seed=1');
+  const viewer = page.locator('section[aria-busy="true"]');
+  await page.getByRole('radio', {name: /oranges/i}).check();
+  await viewer.waitFor({timeout: 5_000});
+  // The canvas is neither the old painting nor black: the photo, faint and grey.
+  const middle = await page.evaluate(() => {
+    const canvas = document.querySelector('canvas');
+    const [r, g, b] = canvas
+      .getContext('2d')
+      .getImageData(Math.floor(canvas.width / 2), Math.floor(canvas.height / 2), 1, 1).data;
+    return {r, g, b};
+  });
+  assert.ok(middle.r + middle.g + middle.b > 150, `the plate is dark: ${JSON.stringify(middle)}`);
+  await assert.doesNotReject(page.getByText(/Planning brush \d of \d/).waitFor({timeout: 5_000}));
+  await page.getByRole('button', {name: 'Pause'}).waitFor({timeout: 60_000});
+  assert.equal(await viewer.count(), 0);
+  const filled = await page
+    .locator('.viewer')
+    .evaluate((el) => el.style.getPropertyValue('--planned'));
+  assert.equal(filled, '1');
+  await page.close();
+});
+
+test('a photo planned ahead starts painting at once', async () => {
+  const page = await open('photo=golden&seed=1');
+  // The other three are planned behind the first while it plays.
+  await page.locator('label.photo[data-ready]').nth(2).waitFor({timeout: 90_000});
+  const started = Date.now();
+  await page.getByRole('radio', {name: /rowboats/i}).check();
+  await page.getByRole('button', {name: 'Pause'}).waitFor({timeout: 5_000});
+  const took = Date.now() - started;
+  assert.ok(took < 1_000, `a planned-ahead photo took ${took} ms to start`);
+  await page.close();
+});
+
+test('the first seconds of painting never block a frame for long', async () => {
+  const page = await browser.newPage({viewport: {width: 1280, height: 900}});
+  await page.addInitScript(() => {
+    window.longTasks = [];
+    new PerformanceObserver((list) => {
+      for (const entry of list.getEntries()) window.longTasks.push(Math.round(entry.duration));
+    }).observe({type: 'longtask'});
+  });
+  await page.goto(`${site.url}/#photo=golden&seed=1`);
+  await page.getByRole('button', {name: 'Pause'}).waitFor({timeout: 60_000});
+  // The first brush's strokes are the dearest; the budget must hold there too.
+  await page.evaluate(() => window.longTasks.splice(0));
+  await page.waitForTimeout(2_000);
+  const tasks = await page.evaluate(() => window.longTasks);
+  const longest = Math.max(0, ...tasks);
+  assert.ok(longest < 60, `a frame blocked for ${longest} ms (${tasks.join(', ')})`);
+  await page.close();
+});

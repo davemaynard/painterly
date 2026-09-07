@@ -36,6 +36,8 @@ export type PlanOptions = {
   maxLength?: number;
   /** 1 follows the image gradient exactly; lower values straighten strokes. Default 1. */
   curvature?: number;
+  /** Called after each brush is planned: how many are done, out of how many. */
+  onLayer?: (planned: number, of: number) => void;
 };
 
 export function defaultRadii(width: number, height: number): number[] {
@@ -53,6 +55,7 @@ export function plan(source: Raster, options: PlanOptions = {}): Plan {
     minLength = 3,
     maxLength = 10,
     curvature = 1,
+    onLayer,
   } = options;
   const random = createRandom(seed);
   const {width, height} = source;
@@ -131,6 +134,7 @@ export function plan(source: Raster, options: PlanOptions = {}): Plan {
     // call stack has room for arguments.
     for (const stroke of layerStrokes) strokes.push(stroke);
     layerSizes.push(layerStrokes.length);
+    onLayer?.(layer + 1, radii.length);
   });
 
   return {seed, width, height, ground, strokes, layerSizes};

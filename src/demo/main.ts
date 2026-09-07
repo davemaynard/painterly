@@ -1,12 +1,13 @@
 // The page. Wires the controls to a player, keeps the choice of photo, seed,
 // style and brush in the URL, and turns what the player reports into words.
 // The decisions live in plan/, the look in paint/, the pacing in schedule.ts,
-// the play loop and the scrubbing cache in player.ts and snapshots.ts.
-import {rasterFromImageData} from '../image';
+// the play loop and the scrubbing cache in player.ts and snapshots.ts, and
+// planning runs on its own thread through planning.ts.
 import {type BrushName, brushes} from '../paint';
-import {isStyleName, plan, type StyleName, styles} from '../plan';
+import {defaultRadii, isStyleName, type StyleName, styles} from '../plan';
 import type {Plan} from '../types';
 import {type Photo, photos} from './photos';
+import {createPlanning, type PlanSource} from './planning';
 import {createPlayer, type Player, type PlayerState} from './player';
 
 /**
@@ -33,6 +34,7 @@ const orFail = (message: string): never => {
   throw new Error(message);
 };
 
+const viewer = $<HTMLElement>('.viewer');
 const canvas = $<HTMLCanvasElement>('#canvas');
 const context = canvas.getContext('2d', {alpha: false}) ?? orFail('no 2d context');
 const playButton = $<HTMLButtonElement>('#play');
@@ -56,6 +58,9 @@ type State = {
 };
 
 let state: State = readHash();
+const planning = createPlanning();
+/** Each photo's row in the picker, to mark once its plan is on the shelf. */
+const rows = new Map<string, HTMLLabelElement>();
 let painting: Plan | null = null;
 /** How long the planner took, kept for the line shown when the painting finishes. */
 let plannedIn = 0;
@@ -82,6 +87,7 @@ for (const photo of photos) {
   text.textContent = photo.caption;
   label.append(input, thumb, text);
   ownTile.before(label);
+  rows.set(photo.id, label);
   input.addEventListener('change', () => {
     if (!input.checked) return;
     state = {...state, photo, seed: 1};
@@ -178,6 +184,8 @@ async function load(): Promise<void> {
   painting = null;
   writeHash();
   playButton.disabled = true;
+  playButton.textContent = 'Play';
+  playButton.setAttribute('aria-pressed', 'false');
   timeline.disabled = true;
   downloadButton.hidden = true;
   setStatus('Loading the photo…');
@@ -188,24 +196,29 @@ async function load(): Promise<void> {
 
   const image = await loadImage(state.photo.file);
   if (token !== loading) return;
-  const scale = Math.min(1, PLAN_SIDE / Math.max(image.naturalWidth, image.naturalHeight));
-  const width = Math.round(image.naturalWidth * scale);
-  const height = Math.round(image.naturalHeight * scale);
+  const {width, height} = fitted(image);
   canvas.width = width;
   canvas.height = height;
+  showGhost(image);
 
-  setStatus('Mixing the palette…');
-  // Let the status paint before the planner takes the thread.
-  await new Promise((resolve) => setTimeout(resolve, 30));
-  if (token !== loading) return;
-  const reference = new OffscreenCanvas(width, height);
-  const refContext = reference.getContext('2d') ?? orFail('no 2d context');
-  refContext.drawImage(image, 0, 0, width, height);
-  const source = rasterFromImageData(refContext.getImageData(0, 0, width, height));
-
+  const options = styles[state.style].options(width, height);
+  const brushCount = (options.radii ?? defaultRadii(width, height)).length;
+  const key = planKey(state.photo, state.seed, state.style);
+  if (!planning.has(key)) showPlanning(0, brushCount);
   const started = performance.now();
-  painting = plan(source, {...styles[state.style].options(width, height), seed: state.seed});
+  painting = await planning.plan(
+    {
+      key,
+      source: () => pixelsOf(image, width, height),
+      options: () => ({...options, seed: state.seed}),
+    },
+    (planned, of) => {
+      if (token === loading) showPlanning(planned, of);
+    },
+  );
+  if (token !== loading) return;
   plannedIn = Math.round(performance.now() - started);
+  hidePlanning();
   timeline.max = String(painting.strokes.length);
   timeline.value = '0';
   // Where each brush hands over, for tooling that wants to pace itself like the page does.
@@ -225,6 +238,78 @@ async function load(): Promise<void> {
   // Autoplay is the point of the page, unless the visitor has asked for less motion.
   if (matchMedia('(prefers-reduced-motion: reduce)').matches) setStatus('Ready. Press play.');
   else player.play();
+  planAhead();
+}
+
+/** Plan the other photos behind the one playing, so choosing one later starts at once. */
+function planAhead(): void {
+  const others = photos.filter((photo) => photo.id !== state.photo.id);
+  for (const photo of others) {
+    rows.get(photo.id)?.toggleAttribute('data-ready', planning.has(planKey(photo, 1, state.style)));
+  }
+  planning.preload(
+    others.map((photo) => ({
+      key: planKey(photo, 1, state.style),
+      source: async () => {
+        const image = await loadImage(photo.file);
+        const {width, height} = fitted(image);
+        return pixelsOf(image, width, height);
+      },
+      options: (width, height) => ({...styles[state.style].options(width, height), seed: 1}),
+      ready: () => rows.get(photo.id)?.setAttribute('data-ready', ''),
+    })),
+  );
+}
+
+/** Photo, seed and style name a plan; the size does too, since phones plan smaller. */
+function planKey(photo: State['photo'], seed: number, style: StyleName): string {
+  return `${photo.id}:${photo.file}|${seed}|${style}|${PLAN_SIDE}`;
+}
+
+/** The photo's size on the canvas: scaled down to PLAN_SIDE, never up. */
+function fitted(image: HTMLImageElement): {width: number; height: number} {
+  const scale = Math.min(1, PLAN_SIDE / Math.max(image.naturalWidth, image.naturalHeight));
+  return {
+    width: Math.round(image.naturalWidth * scale),
+    height: Math.round(image.naturalHeight * scale),
+  };
+}
+
+/** The photo's pixels at that size, for the planner. */
+function pixelsOf(image: HTMLImageElement, width: number, height: number): PlanSource {
+  const scratch = new OffscreenCanvas(width, height);
+  const scratchContext = scratch.getContext('2d') ?? orFail('no 2d context');
+  scratchContext.drawImage(image, 0, 0, width, height);
+  return {width, height, pixels: scratchContext.getImageData(0, 0, width, height).data};
+}
+
+// ---- while the planner works ------------------------------------------------
+
+/**
+ * The photo itself, faint and grey, stands in for the painting while its
+ * strokes are planned: the picture about to be painted, before any paint.
+ */
+function showGhost(image: HTMLImageElement): void {
+  context.fillStyle = getComputedStyle(document.body).backgroundColor;
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.save();
+  context.globalAlpha = 0.3;
+  context.filter = 'grayscale(1)';
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  context.restore();
+}
+
+/** The rule under the running head fills brush by brush, and the words keep count. */
+function showPlanning(planned: number, of: number): void {
+  viewer.setAttribute('aria-busy', 'true');
+  // A sliver from the start, so the rule is seen to be live before the first brush lands.
+  viewer.style.setProperty('--planned', String(Math.max(0.04, planned / of)));
+  setStatus(`Planning brush ${Math.min(planned + 1, of)} of ${of}…`);
+}
+
+function hidePlanning(): void {
+  viewer.style.setProperty('--planned', '1');
+  viewer.removeAttribute('aria-busy');
 }
 
 // ---- what the page says -----------------------------------------------------
@@ -291,13 +376,16 @@ function captionFor(photo: State['photo']): (string | Node)[] {
   return ['Photo by ', link, ' on Unsplash.'];
 }
 
-function loadImage(src: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const image = new Image();
-    image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error(`could not load ${src}`));
-    image.src = src;
-  });
+/** Loaded and decoded: drawing an undecoded photo decodes it then, on the main thread. */
+async function loadImage(src: string): Promise<HTMLImageElement> {
+  const image = new Image();
+  image.src = src;
+  try {
+    await image.decode();
+  } catch {
+    throw new Error(`could not load ${src}`);
+  }
+  return image;
 }
 
 // ---- the URL ----------------------------------------------------------------

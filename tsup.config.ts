@@ -14,9 +14,10 @@ export default defineConfig([
     noExternal: ['mersenne-twister'],
   },
   {
-    // The demo page's script, built straight into docs/ so GitHub Pages serves
-    // it with no build step of its own. Committed; CI fails if it is stale.
-    entry: {painterly: 'src/demo/main.ts'},
+    // The demo page's script and its planning worker, built straight into
+    // docs/ so GitHub Pages serves them with no build step of its own.
+    // Committed; CI fails if they are stale.
+    entry: {painterly: 'src/demo/main.ts', planner: 'src/demo/planner.ts'},
     outDir: 'docs',
     format: ['iife'],
     minify: true,

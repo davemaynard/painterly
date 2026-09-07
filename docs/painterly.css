@@ -279,6 +279,7 @@ legend,
 }
 
 .runner {
+  position: relative;
   display: flex;
   gap: 1rem;
   padding: 1.5rem 0;
@@ -287,6 +288,26 @@ legend,
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--muted);
+}
+
+/* While the planner works, the rule under the running head fills from the
+   left, one brush at a time, then fades once the painting starts. */
+.runner::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 -1px 0;
+  height: 1px;
+  background: var(--ink);
+  transform: scaleX(var(--planned, 0));
+  transform-origin: left;
+  opacity: 0;
+  transition:
+    transform 400ms var(--ease),
+    opacity 200ms var(--ease);
+}
+
+.viewer[aria-busy="true"] .runner::after {
+  opacity: 1;
 }
 
 .readout {

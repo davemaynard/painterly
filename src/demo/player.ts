@@ -54,12 +54,30 @@ export type PlayerOptions = {
 
 /** Painting time a frame may spend, leaving the rest of its 16.7 ms to the browser. */
 const FRAME_BUDGET_MS = 10;
-/** Strokes between looks at the clock: a few milliseconds' worth. */
-const CHUNK = 200;
+
+/**
+ * A painter, the canvas it paints, and what its strokes have been costing.
+ *
+ * The cost cannot be read off a single call: a canvas records strokes and
+ * rasterises them later, in one lump, when it sees fit. So each frame paints
+ * an allowance, makes the canvas rasterise it, times the whole, and sets the
+ * next allowance from that. A stroke of the first brush costs a hundred times
+ * one of the last, and a phone a few times a desktop; the rate follows both.
+ */
+type Lane = {
+  painter: Painter;
+  source: HTMLCanvasElement | OffscreenCanvas;
+  context: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
+  /** Strokes per millisecond, as last seen. Starts low and learns. */
+  rate: number;
+};
+
+/** A one-pixel readback: the cheapest way to make a canvas rasterise what it holds. */
+const settle = (lane: Lane) => lane.context.getImageData(0, 0, 1, 1);
 
 type Warmer = {
-  /** Paint until the deadline. True once every mark has a copy. */
-  step(deadline: number): boolean;
+  /** Paint for about `budget` milliseconds. True once every mark has a copy. */
+  step(budget: number): boolean;
   drop(): void;
 };
 
@@ -74,7 +92,12 @@ export function createPlayer(options: PlayerOptions): Player {
   });
   const lastMark = snapshots.marksBetween(0, total).at(-1) ?? 0;
 
-  let painter: Painter = createPainter(context, painting, options.brush);
+  const live: Lane = {
+    painter: createPainter(context, painting, options.brush),
+    source: canvas,
+    context,
+    rate: 1,
+  };
   let warmer: Warmer | null = createWarmer(options.brush);
   let position = 0;
   let playing = false;
@@ -85,10 +108,10 @@ export function createPlayer(options: PlayerOptions): Player {
 
   const state = (): PlayerState => ({
     position,
-    painted: painter.painted,
+    painted: live.painter.painted,
     elapsed: schedule.timeOf(position),
     playing,
-    finished: painter.painted >= total,
+    finished: live.painter.painted >= total,
   });
 
   /** Tell the page, but only when something it shows has changed. */
@@ -101,23 +124,26 @@ export function createPlayer(options: PlayerOptions): Player {
   };
 
   /**
-   * Paint `who` toward `target` until the deadline, keeping a copy of `source`
-   * at each mark passed on the way. True when it got there.
+   * Paint the lane toward `target` for about `budget` milliseconds, keeping a
+   * copy of its canvas at each mark passed on the way. Returns the time spent.
    */
-  const advance = (
-    who: Painter,
-    source: HTMLCanvasElement | OffscreenCanvas,
-    target: number,
-    deadline: number,
-  ): boolean => {
-    while (who.painted < target) {
-      const mark = snapshots.marksBetween(who.painted, target)[0];
-      const stop = Math.min(target, mark ?? target, who.painted + CHUNK);
-      who.paintTo(stop);
-      if (stop === mark) snapshots.keep(mark, createImageBitmap(source));
-      if (performance.now() >= deadline) break;
+  const advance = (lane: Lane, target: number, budget: number): number => {
+    const {painter} = lane;
+    if (painter.painted >= target || budget <= 0) return 0;
+    const from = painter.painted;
+    const started = performance.now();
+    const stop = Math.min(target, from + Math.max(1, Math.floor(budget * lane.rate)));
+    for (const mark of snapshots.marksBetween(from, stop)) {
+      painter.paintTo(mark);
+      snapshots.keep(mark, createImageBitmap(lane.source));
     }
-    return who.painted >= target;
+    painter.paintTo(stop);
+    settle(lane);
+    const took = Math.max(0.1, performance.now() - started);
+    // Half the old rate, half the new: quick to follow a change of brush,
+    // steady against one odd frame.
+    lane.rate = lane.rate / 2 + (stop - from) / took / 2;
+    return took;
   };
 
   /**
@@ -129,16 +155,19 @@ export function createPlayer(options: PlayerOptions): Player {
     const scratch = new OffscreenCanvas(canvas.width, canvas.height);
     const scratchContext = scratch.getContext('2d', {alpha: false});
     if (!scratchContext) throw new Error('no 2d context');
-    const who = createPainter(scratchContext, painting, brush);
+    const lane: Lane = {
+      painter: createPainter(scratchContext, painting, brush),
+      source: scratch,
+      context: scratchContext,
+      rate: 1,
+    };
     return {
-      step(deadline) {
-        while (who.painted < lastMark && performance.now() < deadline) {
-          const mark = snapshots.marksBetween(who.painted, lastMark)[0] ?? lastMark;
-          const copy = snapshots.nearest(mark);
-          if (copy && copy.count > who.painted) who.resume(copy.image, copy.count);
-          else advance(who, scratch, mark, deadline);
-        }
-        return who.painted >= lastMark;
+      step(budget) {
+        const {painter} = lane;
+        const copy = snapshots.nearest(lastMark);
+        if (copy && copy.count > painter.painted) painter.resume(copy.image, copy.count);
+        advance(lane, lastMark, budget);
+        return painter.painted >= lastMark;
       },
       drop() {
         scratch.width = 0;
@@ -151,11 +180,11 @@ export function createPlayer(options: PlayerOptions): Player {
   const tick = () => {
     frame = 0;
     const now = performance.now();
-    const deadline = now + FRAME_BUDGET_MS;
     if (playing) position = schedule.strokesAt(elapsedAtPause + (now - startedAt));
-    const there = advance(painter, canvas, position, deadline);
+    const spent = advance(live, position, FRAME_BUDGET_MS);
+    const there = live.painter.painted >= position;
     if (playing && there && position >= total) playing = false;
-    if (warmer?.step(deadline)) {
+    if (warmer?.step(FRAME_BUDGET_MS - spent)) {
       warmer.drop();
       warmer = null;
     }
@@ -173,6 +202,7 @@ export function createPlayer(options: PlayerOptions): Player {
       elapsedAtPause = schedule.timeOf(count);
       startedAt = performance.now();
     }
+    const {painter} = live;
     const from = seekFrom(painter.painted, count, snapshots.nearest(count)?.count);
     if (from !== painter.painted) {
       const copy = snapshots.nearest(count);
@@ -215,7 +245,8 @@ export function createPlayer(options: PlayerOptions): Player {
       // Every copy was painted with the old brush, so none of them is any use.
       snapshots.clear();
       warmer?.drop();
-      painter = createPainter(context, painting, brush);
+      live.painter = createPainter(context, painting, brush);
+      live.rate = 1;
       warmer = createWarmer(brush);
       seek(position);
     },

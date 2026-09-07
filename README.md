@@ -70,9 +70,12 @@ painter.paintTo(painting.strokes.length);
 ```
 
 `plan()` takes options for the brush radii, the error threshold, stroke length
-and curvature; the defaults are tuned for photos around 1400 px. `Plan` and
-`Stroke` are plain typed objects, so a plan can be serialised, replayed, or
-rendered by something other than the bundled painter.
+and curvature, and an `onLayer` callback that hears from it after each brush;
+the defaults are tuned for photos around 1400 px. `Plan` and `Stroke` are plain
+typed objects, so a plan can be serialised, replayed, or rendered by something
+other than the bundled painter. `packPlan()` and `unpackPlan()` turn a plan into
+a handful of typed arrays and back, exactly: the form to post from a worker or
+keep around, at a seventh of the memory.
 
 ## How it's built
 
@@ -88,13 +91,15 @@ rendered by something other than the bundled painter.
   its start and finish are. `bristle` is the 2020 look, `ribbon` is this port's
   first brush and the underpainting's default, `round` is the pointillist sketch
   that never finished, `flat` is a house-painter's brush.
-- `src/demo/` is the page: photo picker, a layer-paced schedule, a timeline
-  that scrubs backwards from layer snapshots, and nothing else.
+- `src/demo/` is the page: photo picker, a layer-paced schedule, a player that
+  paints under a per-frame budget and scrubs from snapshots, and a planner on
+  its own thread that reports each brush as it goes and plans the other photos
+  behind the one playing.
 - `processing/` holds the 2020 Processing sketches this grew out of, untouched.
 
 TypeScript, Canvas 2D, no framework. `tsup` builds the library to `dist/` and
-the page script straight into `docs/`, which GitHub Pages serves as is; CI
-rebuilds `docs/` and fails on a diff.
+the page script and its worker straight into `docs/`, which GitHub Pages serves
+as is; CI rebuilds `docs/` and fails on a diff.
 
 ## Development
 
