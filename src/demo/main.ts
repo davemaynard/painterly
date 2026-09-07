@@ -1,19 +1,13 @@
-// The page. Loads a photo, plans the painting, and plays it on a fixed clock
-// with a timeline you can scrub. Everything here is wiring; the decisions live
-// in plan/, the look in paint/, the pacing in schedule.ts.
+// The page. Wires the controls to a player, keeps the choice of photo, seed,
+// style and brush in the URL, and turns what the player reports into words.
+// The decisions live in plan/, the look in paint/, the pacing in schedule.ts,
+// the play loop and the scrubbing cache in player.ts and snapshots.ts.
 import {rasterFromImageData} from '../image';
-import {
-  type Brush,
-  type BrushName,
-  brushes,
-  createPainter,
-  createSchedule,
-  type Painter,
-  type Schedule,
-} from '../paint';
+import {type BrushName, brushes} from '../paint';
 import {isStyleName, plan, type StyleName, styles} from '../plan';
 import type {Plan} from '../types';
 import {type Photo, photos} from './photos';
+import {createPlayer, type Player, type PlayerState} from './player';
 
 /**
  * How long each style plays, whatever the photo. The underpainting has a few
@@ -27,14 +21,6 @@ const DEFAULT_BRUSH: Record<StyleName, BrushName> = {painting: 'bristle', underp
  * stays under a few seconds.
  */
 const PLAN_SIDE = window.innerWidth < 600 ? 900 : 1400;
-/**
- * How much memory the scrubbing snapshots may take. Each one is a copy of the
- * canvas, and the more of them there are the less a backward seek has to
- * repaint, so this is the whole trade: memory against the wait after a drag.
- */
-const SNAPSHOT_BUDGET_BYTES = 64 * 1024 * 1024;
-/** Never keep more than this many, however small the canvas is. */
-const MOST_SNAPSHOTS = 12;
 
 const $ = <T extends Element>(selector: string): T => {
   const element = document.querySelector<T>(selector);
@@ -42,9 +28,13 @@ const $ = <T extends Element>(selector: string): T => {
   return element;
 };
 
+/** Give up, as an expression, so a value can be required where it is read. */
+const orFail = (message: string): never => {
+  throw new Error(message);
+};
+
 const canvas = $<HTMLCanvasElement>('#canvas');
-const context = canvas.getContext('2d', {alpha: false});
-if (!context) throw new Error('no 2d context');
+const context = canvas.getContext('2d', {alpha: false}) ?? orFail('no 2d context');
 const playButton = $<HTMLButtonElement>('#play');
 const againButton = $<HTMLButtonElement>('#again');
 const downloadButton = $<HTMLButtonElement>('#download');
@@ -69,17 +59,9 @@ let state: State = readHash();
 let painting: Plan | null = null;
 /** How long the planner took, kept for the line shown when the painting finishes. */
 let plannedIn = 0;
-let painter: Painter | null = null;
-let schedule: Schedule | null = null;
-/** The canvas as it stood after `count` strokes, to seek from without repainting. */
-type Snapshot = {count: number; image: ImageBitmap};
-let snapshots: Snapshot[] = [];
-/** How many strokes apart those snapshots are taken. */
-let snapshotEvery = Number.POSITIVE_INFINITY;
-let playing = false;
-let startedAt = 0;
-let elapsedAtPause = 0;
-let frame = 0;
+let player: Player | null = null;
+/** Counts the loads, so a photo swapped mid-load does not paint the old one. */
+let loading = 0;
 /** Where the timeline was dragged to, waiting for the next frame to be painted. */
 let pendingSeek: number | null = null;
 let seekFrame = 0;
@@ -128,11 +110,17 @@ fileInput.addEventListener('change', () => {
 
 // ---- controls ---------------------------------------------------------------
 
-playButton.addEventListener('click', () => (playing ? pause() : play()));
+playButton.addEventListener('click', () => {
+  if (!player) return;
+  if (player.state.playing) player.pause();
+  else player.play();
+});
+
 againButton.addEventListener('click', () => {
   state = {...state, seed: state.seed + 1};
   void load();
 });
+
 styleSelect.value = state.style;
 styleSelect.addEventListener('change', () => {
   const style = styleSelect.value;
@@ -141,202 +129,37 @@ styleSelect.addEventListener('change', () => {
   brushSelect.value = state.brush;
   void load();
 });
+
 brushSelect.value = state.brush;
 brushSelect.addEventListener('change', () => {
   state = {...state, brush: brushSelect.value as BrushName};
   writeHash();
-  if (!painting || !schedule) return;
-  const count = painter?.painted ?? 0;
-  startPainter(painting);
-  seek(count);
+  player?.useBrush(brushes[state.brush]);
 });
+
 timeline.addEventListener('input', () => {
-  if (!schedule) return;
-  pause();
+  if (!player) return;
+  player.pause();
   // A drag fires an event per mouse move, and repainting for each one is work
   // the visitor never sees. Keep the newest position and paint it once a frame.
   pendingSeek = Number(timeline.value);
   if (!seekFrame) seekFrame = requestAnimationFrame(flushSeek);
 });
+
 // Letting go picks the painting up from where you dropped it: the timeline is a
 // way to move through the painting, not a way to stop it.
 timeline.addEventListener('change', () => {
   flushSeek();
-  if (!painting || !painter || painter.painted >= painting.strokes.length) return;
-  play();
+  if (!player || player.state.finished) return;
+  player.play();
 });
+
 document.addEventListener('keydown', (event) => {
-  if (event.key === ' ' && event.target === document.body) {
-    event.preventDefault();
-    playing ? pause() : play();
-  }
+  if (event.key !== ' ' || event.target !== document.body || !player) return;
+  event.preventDefault();
+  if (player.state.playing) player.pause();
+  else player.play();
 });
-
-/** Paint the position the timeline is sitting at, if it has moved since the last frame. */
-function flushSeek(): void {
-  cancelAnimationFrame(seekFrame);
-  seekFrame = 0;
-  if (pendingSeek === null) return;
-  const to = pendingSeek;
-  pendingSeek = null;
-  seek(to);
-}
-
-// ---- loading and planning ---------------------------------------------------
-
-async function load(): Promise<void> {
-  pause();
-  writeHash();
-  painting = null;
-  painter = null;
-  schedule = null;
-  for (const {image} of snapshots) image.close();
-  snapshots = [];
-  downloadButton.hidden = true;
-  setStatus('Loading the photo…');
-  // Every painting takes the same time whatever the photo, so the clock is
-  // right before a single stroke has been planned.
-  showClock(0);
-  caption.replaceChildren(...captionFor(state.photo));
-
-  const image = await loadImage(state.photo.file);
-  const scale = Math.min(1, PLAN_SIDE / Math.max(image.naturalWidth, image.naturalHeight));
-  const width = Math.round(image.naturalWidth * scale);
-  const height = Math.round(image.naturalHeight * scale);
-  canvas.width = width;
-  canvas.height = height;
-
-  setStatus('Mixing the palette…');
-  // Let the status paint before the planner takes the thread.
-  await new Promise((resolve) => setTimeout(resolve, 30));
-  const reference = new OffscreenCanvas(width, height);
-  const refContext = reference.getContext('2d');
-  if (!refContext) throw new Error('no 2d context');
-  refContext.drawImage(image, 0, 0, width, height);
-  const source = rasterFromImageData(refContext.getImageData(0, 0, width, height));
-
-  const started = performance.now();
-  painting = plan(source, {...styles[state.style].options(width, height), seed: state.seed});
-  plannedIn = Math.round(performance.now() - started);
-  schedule = createSchedule(painting, DURATION_MS[state.style]);
-  timeline.max = String(painting.strokes.length);
-  timeline.value = '0';
-  // Where each brush hands over, for tooling that wants to pace itself like the page does.
-  timeline.dataset.layers = painting.layerSizes.join(',');
-  timeline.disabled = false;
-  const affordable = Math.floor(SNAPSHOT_BUDGET_BYTES / (width * height * 4));
-  const most = Math.max(4, Math.min(MOST_SNAPSHOTS, affordable));
-  snapshotEvery = Math.max(1000, Math.ceil(painting.strokes.length / most));
-  startPainter(painting);
-  playButton.disabled = false;
-  updateClock();
-  // Autoplay is the point of the page, unless the visitor has asked for less motion.
-  if (matchMedia('(prefers-reduced-motion: reduce)').matches) setStatus('Ready. Press play.');
-  else play();
-}
-
-function startPainter(current: Plan): void {
-  const brush: Brush = brushes[state.brush];
-  if (!context) return;
-  painter = createPainter(context, current, brush);
-  for (const {image} of snapshots) image.close();
-  snapshots = [];
-}
-
-// ---- playing ----------------------------------------------------------------
-
-function play(): void {
-  if (!painting || !schedule || !painter) return;
-  if (painter.painted >= painting.strokes.length) {
-    seek(0);
-  }
-  playing = true;
-  playButton.textContent = 'Pause';
-  playButton.setAttribute('aria-pressed', 'true');
-  elapsedAtPause = schedule.timeOf(painter.painted);
-  startedAt = performance.now();
-  frame = requestAnimationFrame(tick);
-}
-
-function pause(): void {
-  playing = false;
-  cancelAnimationFrame(frame);
-  playButton.textContent = 'Play';
-  playButton.setAttribute('aria-pressed', 'false');
-}
-
-function tick(now: number): void {
-  if (!playing || !painting || !schedule || !painter) return;
-  const elapsed = elapsedAtPause + (now - startedAt);
-  const target = schedule.strokesAt(elapsed);
-  paintForwardTo(target);
-  timeline.value = String(painter.painted);
-  updateClock();
-  if (painter.painted >= painting.strokes.length) {
-    finish();
-    return;
-  }
-  setStatus(progressText(painter.painted));
-  frame = requestAnimationFrame(tick);
-}
-
-/** Paint forward, stopping at each place worth keeping a snapshot of. */
-function paintForwardTo(target: number): void {
-  if (!painting || !painter) return;
-  for (const mark of marksBetween(painter.painted, target)) {
-    painter.paintTo(mark);
-    if (snapshots.some((s) => s.count === mark)) continue;
-    // createImageBitmap copies the canvas as it is now, so the painting may
-    // carry on before the copy arrives.
-    void createImageBitmap(canvas).then((image) => snapshots.push({count: mark, image}));
-  }
-  painter.paintTo(target);
-}
-
-/**
- * The stroke counts between `from` and `to` worth a snapshot: an even grid, so
- * that a seek backwards repaints at most one interval. Layer boundaries are not
- * enough on their own, since the last brush can hold two thirds of the painting
- * and a seek behind it would repaint every one of those strokes.
- */
-function marksBetween(from: number, to: number): number[] {
-  const marks: number[] = [];
-  if (!Number.isFinite(snapshotEvery)) return marks;
-  for (let n = Math.floor(from / snapshotEvery) + 1; n * snapshotEvery <= to; n++) {
-    marks.push(n * snapshotEvery);
-  }
-  return marks;
-}
-
-function seek(count: number): void {
-  if (!painting || !painter || !schedule) return;
-  // Start from the nearest snapshot at or before the target, whichever side of
-  // the playhead it sits on. Jumping forward across one costs exactly as much
-  // as scrubbing back behind it: both repaint every stroke in between.
-  let nearest: Snapshot | undefined;
-  for (const snapshot of snapshots) {
-    if (snapshot.count <= count && (!nearest || snapshot.count > nearest.count)) nearest = snapshot;
-  }
-  const from = nearest?.count ?? 0;
-  if (from > painter.painted || count < painter.painted) {
-    if (nearest) painter.resume(nearest.image, nearest.count);
-    else painter.reset();
-  }
-  paintForwardTo(count);
-  timeline.value = String(painter.painted);
-  updateClock();
-  downloadButton.hidden = painter.painted < painting.strokes.length;
-  setStatus(
-    painter.painted >= painting.strokes.length ? finishedText() : progressText(painter.painted),
-  );
-}
-
-function finish(): void {
-  pause();
-  updateClock();
-  setStatus(finishedText());
-  downloadButton.hidden = false;
-}
 
 downloadButton.addEventListener('click', () => {
   canvas.toBlob((blob) => {
@@ -349,8 +172,87 @@ downloadButton.addEventListener('click', () => {
   }, 'image/png');
 });
 
-// ---- small helpers ----------------------------------------------------------
+/** Paint the position the timeline is sitting at, if it has moved since the last frame. */
+function flushSeek(): void {
+  cancelAnimationFrame(seekFrame);
+  seekFrame = 0;
+  if (pendingSeek === null || !player) return;
+  const to = pendingSeek;
+  pendingSeek = null;
+  player.seek(to);
+}
 
+// ---- loading and planning ---------------------------------------------------
+
+async function load(): Promise<void> {
+  const token = ++loading;
+  player?.destroy();
+  player = null;
+  painting = null;
+  writeHash();
+  playButton.disabled = true;
+  timeline.disabled = true;
+  downloadButton.hidden = true;
+  setStatus('Loading the photo…');
+  // Every painting takes the same time whatever the photo, so the clock is
+  // right before a single stroke has been planned.
+  showClock(0, DURATION_MS[state.style]);
+  caption.replaceChildren(...captionFor(state.photo));
+
+  const image = await loadImage(state.photo.file);
+  if (token !== loading) return;
+  const scale = Math.min(1, PLAN_SIDE / Math.max(image.naturalWidth, image.naturalHeight));
+  const width = Math.round(image.naturalWidth * scale);
+  const height = Math.round(image.naturalHeight * scale);
+  canvas.width = width;
+  canvas.height = height;
+
+  setStatus('Mixing the palette…');
+  // Let the status paint before the planner takes the thread.
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  if (token !== loading) return;
+  const reference = new OffscreenCanvas(width, height);
+  const refContext = reference.getContext('2d') ?? orFail('no 2d context');
+  refContext.drawImage(image, 0, 0, width, height);
+  const source = rasterFromImageData(refContext.getImageData(0, 0, width, height));
+
+  const started = performance.now();
+  painting = plan(source, {...styles[state.style].options(width, height), seed: state.seed});
+  plannedIn = Math.round(performance.now() - started);
+  timeline.max = String(painting.strokes.length);
+  timeline.value = '0';
+  // Where each brush hands over, for tooling that wants to pace itself like the page does.
+  timeline.dataset.layers = painting.layerSizes.join(',');
+  timeline.disabled = false;
+
+  player = createPlayer({
+    canvas,
+    context,
+    painting,
+    brush: brushes[state.brush],
+    duration: DURATION_MS[state.style],
+    onChange: render,
+  });
+  playButton.disabled = false;
+  render(player.state);
+  // Autoplay is the point of the page, unless the visitor has asked for less motion.
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) setStatus('Ready. Press play.');
+  else player.play();
+}
+
+// ---- what the page says -----------------------------------------------------
+
+function render(view: PlayerState): void {
+  // While the visitor is dragging, the thumb belongs to them, not to the painting.
+  if (pendingSeek === null) timeline.value = String(view.painted);
+  playButton.textContent = view.playing ? 'Pause' : 'Play';
+  playButton.setAttribute('aria-pressed', String(view.playing));
+  downloadButton.hidden = !view.finished;
+  showClock(view.elapsed, player?.duration ?? DURATION_MS[state.style]);
+  setStatus(view.finished ? finishedText() : progressText(view.painted));
+}
+
+/** Which brush is working. How far along the painting is, the timeline already shows. */
 function progressText(count: number): string {
   if (!painting) return '';
   let layer = 0;
@@ -364,26 +266,20 @@ function progressText(count: number): string {
   return `Brush ${Math.min(layer + 1, layers)} of ${layers}`;
 }
 
-/** How far into the painting we are, against what the whole of it takes. */
-function updateClock(): void {
-  if (!schedule || !painter) return;
-  showClock(schedule.timeOf(painter.painted));
+/** The one number worth keeping, shown once the picture is finished. */
+function finishedText(): string {
+  if (!painting) return '';
+  const strokes = painting.strokes.length.toLocaleString();
+  return `${strokes} strokes, planned in ${(plannedIn / 1000).toFixed(1)} s`;
 }
 
-function showClock(elapsed: number): void {
-  const total = schedule?.duration ?? DURATION_MS[state.style];
+function showClock(elapsed: number, total: number): void {
   clock.textContent = `${asMinutes(elapsed)} / ${asMinutes(total)}`;
 }
 
 function asMinutes(ms: number): string {
   const seconds = Math.max(0, Math.round(ms / 1000));
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
-}
-
-/** The one number worth keeping, shown once the picture is finished. */
-function finishedText(): string {
-  if (!painting) return '';
-  return `${painting.strokes.length.toLocaleString()} strokes, planned in ${(plannedIn / 1000).toFixed(1)} s`;
 }
 
 function brushCount(current: Plan): number {
@@ -412,6 +308,8 @@ function loadImage(src: string): Promise<HTMLImageElement> {
     image.src = src;
   });
 }
+
+// ---- the URL ----------------------------------------------------------------
 
 function readHash(): State {
   const params = new URLSearchParams(location.hash.slice(1));
