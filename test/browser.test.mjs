@@ -31,11 +31,13 @@ async function open(hash, viewport = {width: 1280, height: 900}) {
   return page;
 }
 
-/** Drags the timeline to `count` strokes, which paints them synchronously. */
+/** Drags the timeline to `count` strokes and waits for the frame that paints them. */
 async function seek(page, count) {
   await page.getByRole('slider', {name: 'Timeline'}).evaluate((input, value) => {
     input.value = String(value);
     input.dispatchEvent(new Event('input', {bubbles: true}));
+    // The page coalesces a drag into one repaint per frame.
+    return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
   }, count);
 }
 

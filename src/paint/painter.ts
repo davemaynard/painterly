@@ -37,9 +37,16 @@ export function createPainter(context: Context2D, painting: Plan, brush: Brush):
   const paintTo = (count: number) => {
     const target = Math.max(0, Math.min(count, painting.strokes.length));
     if (target < painted) reset();
+    if (painted >= target) return;
+    // The brush's own state is the same for every stroke it makes, so it is set
+    // once for the whole run. Scrubbing backwards repaints tens of thousands of
+    // strokes, and this is the difference between a pause and a stutter.
+    context.save();
+    applyBrush(context, brush);
     for (; painted < target; painted++) {
-      paintStroke(context, painting.strokes[painted] as Stroke, brush);
+      drawStroke(context, painting.strokes[painted] as Stroke, brush);
     }
+    context.restore();
   };
 
   const resume = (snapshot: CanvasImageSource, count: number) => {
@@ -62,6 +69,21 @@ export function createPainter(context: Context2D, painting: Plan, brush: Brush):
 }
 
 export function paintStroke(context: Context2D, stroke: Stroke, brush: Brush): void {
+  context.save();
+  applyBrush(context, brush);
+  drawStroke(context, stroke, brush);
+  context.restore();
+}
+
+/** The part of the brush that never changes between strokes. */
+function applyBrush(context: Context2D, brush: Brush): void {
+  context.lineCap = 'round';
+  context.lineJoin = 'round';
+  context.globalAlpha = brush.alpha;
+}
+
+/** One stroke, onto a context that already carries the brush's state. */
+function drawStroke(context: Context2D, stroke: Stroke, brush: Brush): void {
   const random = jitter(stroke.jitter);
   const {radius, points} = stroke;
   const first = points[0];
@@ -75,11 +97,6 @@ export function paintStroke(context: Context2D, stroke: Stroke, brush: Brush): v
   nx /= norm;
   ny /= norm;
 
-  context.save();
-  context.lineCap = 'round';
-  context.lineJoin = 'round';
-  context.globalAlpha = brush.alpha;
-
   for (let b = 0; b < brush.bristles; b++) {
     const fan = brush.bristles === 1 ? 0 : (b / (brush.bristles - 1) - 0.5) * 2;
     const offset = fan * brush.spread * radius + (random() - 0.5) * radius * 0.3;
@@ -88,10 +105,12 @@ export function paintStroke(context: Context2D, stroke: Stroke, brush: Brush): v
     const width = radius * lerp(brush.weight[0], brush.weight[1], random());
     const color = drift(stroke.color, brush.drift, random);
     context.strokeStyle = color;
-    context.fillStyle = color;
     context.lineWidth = width;
 
     if (brush.dots || points.length === 1) {
+      // Only the dotted brush fills, and parsing a colour twice per bristle is
+      // a tenth of the time a repaint takes.
+      context.fillStyle = color;
       for (const [x, y] of points) {
         context.beginPath();
         context.arc(x + ox, y + oy, width / 2, 0, Math.PI * 2);
@@ -116,7 +135,6 @@ export function paintStroke(context: Context2D, stroke: Stroke, brush: Brush): v
     context.lineTo(end[0] + ox, end[1] + oy);
     context.stroke();
   }
-  context.restore();
 }
 
 /** The part of a polyline between fractions `from` and `to` of its point count, at least two points. */

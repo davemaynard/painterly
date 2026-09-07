@@ -27,6 +27,14 @@ const DEFAULT_BRUSH: Record<StyleName, BrushName> = {painting: 'bristle', underp
  * stays under a few seconds.
  */
 const PLAN_SIDE = window.innerWidth < 600 ? 900 : 1400;
+/**
+ * How much memory the scrubbing snapshots may take. Each one is a copy of the
+ * canvas, and the more of them there are the less a backward seek has to
+ * repaint, so this is the whole trade: memory against the wait after a drag.
+ */
+const SNAPSHOT_BUDGET_BYTES = 64 * 1024 * 1024;
+/** Never keep more than this many, however small the canvas is. */
+const MOST_SNAPSHOTS = 12;
 
 const $ = <T extends Element>(selector: string): T => {
   const element = document.querySelector<T>(selector);
@@ -62,12 +70,17 @@ let painting: Plan | null = null;
 let plannedIn = 0;
 let painter: Painter | null = null;
 let schedule: Schedule | null = null;
-/** Canvas snapshots at layer boundaries, for scrubbing backwards. */
+/** Canvas snapshots to scrub backwards from, at layer boundaries and in between. */
 let snapshots: {count: number; image: ImageBitmap}[] = [];
+/** How many strokes apart those snapshots are taken. */
+let snapshotEvery = Number.POSITIVE_INFINITY;
 let playing = false;
 let startedAt = 0;
 let elapsedAtPause = 0;
 let frame = 0;
+/** Where the timeline was dragged to, waiting for the next frame to be painted. */
+let pendingSeek: number | null = null;
+let seekFrame = 0;
 
 // ---- photo picker -----------------------------------------------------------
 
@@ -138,11 +151,15 @@ brushSelect.addEventListener('change', () => {
 timeline.addEventListener('input', () => {
   if (!schedule) return;
   pause();
-  seek(Number(timeline.value));
+  // A drag fires an event per mouse move, and repainting for each one is work
+  // the visitor never sees. Keep the newest position and paint it once a frame.
+  pendingSeek = Number(timeline.value);
+  if (!seekFrame) seekFrame = requestAnimationFrame(flushSeek);
 });
 // Letting go picks the painting up from where you dropped it: the timeline is a
 // way to move through the painting, not a way to stop it.
 timeline.addEventListener('change', () => {
+  flushSeek();
   if (!painting || !painter || painter.painted >= painting.strokes.length) return;
   play();
 });
@@ -152,6 +169,16 @@ document.addEventListener('keydown', (event) => {
     playing ? pause() : play();
   }
 });
+
+/** Paint the position the timeline is sitting at, if it has moved since the last frame. */
+function flushSeek(): void {
+  cancelAnimationFrame(seekFrame);
+  seekFrame = 0;
+  if (pendingSeek === null) return;
+  const to = pendingSeek;
+  pendingSeek = null;
+  seek(to);
+}
 
 // ---- loading and planning ---------------------------------------------------
 
@@ -192,6 +219,9 @@ async function load(): Promise<void> {
   // Where each brush hands over, for tooling that wants to pace itself like the page does.
   timeline.dataset.layers = painting.layerSizes.join(',');
   timeline.disabled = false;
+  const affordable = Math.floor(SNAPSHOT_BUDGET_BYTES / (width * height * 4));
+  const most = Math.max(4, Math.min(MOST_SNAPSHOTS, affordable));
+  snapshotEvery = Math.max(1000, Math.ceil(painting.strokes.length / most));
   startPainter(painting);
   playButton.disabled = false;
   // Autoplay is the point of the page, unless the visitor has asked for less motion.
@@ -243,19 +273,32 @@ function tick(now: number): void {
   frame = requestAnimationFrame(tick);
 }
 
-/** Paint forward, taking a snapshot each time a layer completes. */
+/** Paint forward, stopping at each place worth keeping a snapshot of. */
 function paintForwardTo(target: number): void {
   if (!painting || !painter) return;
-  let boundary = 0;
-  for (const size of painting.layerSizes) {
-    boundary += size;
-    if (boundary <= painter.painted || boundary > target) continue;
-    painter.paintTo(boundary);
-    if (!snapshots.some((s) => s.count === boundary)) {
-      void createImageBitmap(canvas).then((image) => snapshots.push({count: boundary, image}));
-    }
+  for (const mark of marksBetween(painter.painted, target)) {
+    painter.paintTo(mark);
+    if (snapshots.some((s) => s.count === mark)) continue;
+    // createImageBitmap copies the canvas as it is now, so the painting may
+    // carry on before the copy arrives.
+    void createImageBitmap(canvas).then((image) => snapshots.push({count: mark, image}));
   }
   painter.paintTo(target);
+}
+
+/**
+ * The stroke counts between `from` and `to` worth a snapshot: an even grid, so
+ * that a seek backwards repaints at most one interval. Layer boundaries are not
+ * enough on their own, since the last brush can hold two thirds of the painting
+ * and a seek behind it would repaint every one of those strokes.
+ */
+function marksBetween(from: number, to: number): number[] {
+  const marks: number[] = [];
+  if (!Number.isFinite(snapshotEvery)) return marks;
+  for (let n = Math.floor(from / snapshotEvery) + 1; n * snapshotEvery <= to; n++) {
+    marks.push(n * snapshotEvery);
+  }
+  return marks;
 }
 
 function seek(count: number): void {
