@@ -71,6 +71,10 @@ try {
     await timeline.evaluate((input, value) => {
       input.value = String(value);
       input.dispatchEvent(new Event('input', {bubbles: true}));
+      // The page coalesces a drag into one repaint per frame, so the canvas is
+      // a frame behind the event. Screenshotting without this waits catches the
+      // previous stroke count.
+      return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     }, count);
     await canvas.screenshot({path: join(frames, `f${String(frame++).padStart(4, '0')}.png`)});
   }

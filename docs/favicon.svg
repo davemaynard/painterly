@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <title>painterly</title>
+  <!--
+    One loaded brush stroke: thick where it lands, tapering as it lifts. It is
+    the mark the library exists to make, and one bold shape is all that survives
+    at the size a browser tab draws it. Ink on paper, on its own tile, so it
+    reads the same against a light tab strip and a dark one.
+  -->
+  <rect width="32" height="32" fill="#f4f3f0" />
+  <path
+    fill="#1c1b19"
+    d="M8.7 29.6 9.5 27.6 10.4 25.7 11.4 23.8 12.4 22 13.5 20.2 14.7 18.4
+       15.9 16.7 17.3 15 18.8 13.3 20.3 11.7 22 10.1 23.7 8.5 25.6 7 27.6 5.6
+       26.4 3.4 24.1 4.5 21.8 5.6 19.6 6.8 17.4 8.1 15.4 9.5 13.4 11 11.6 12.6
+       9.8 14.3 8.1 16 6.5 17.9 5 19.9 3.7 22 2.4 24.1 1.3 26.4Z"
+  />
+</svg>
