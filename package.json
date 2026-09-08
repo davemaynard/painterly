@@ -45,7 +45,8 @@
     "format": "biome format --write .",
     "pretest": "tsup",
     "test": "node --test \"test/*.test.mjs\"",
-    "gif": "node scripts/record-demo.mjs",
+    "gif": "node scripts/record-demo.mjs --format gif",
+    "clip": "node scripts/record-demo.mjs --format mp4",
     "still": "node scripts/record-still.mjs",
     "size": "node scripts/report-size.mjs"
   },
