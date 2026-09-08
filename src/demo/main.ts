@@ -267,12 +267,7 @@ async function load(): Promise<void> {
   player = null;
   painting = null;
   writeHash();
-  playButton.disabled = true;
-  playButton.setAttribute('aria-label', 'Play');
-  playButton.setAttribute('aria-pressed', 'false');
-  backButton.disabled = true;
-  aheadButton.disabled = true;
-  downloadButton.hidden = true;
+  render(null);
   setStatus('Loading the photo…');
   caption.replaceChildren(...captionFor(state.photo));
 
@@ -312,8 +307,6 @@ async function load(): Promise<void> {
     duration: DURATION_MS[state.style],
     onChange: render,
   });
-  playButton.disabled = false;
-  aheadButton.disabled = false;
   // Exact positions the controls do not offer, for the recorder and the tests.
   window.painterly = {seek: player.seek, total: player.total, layers: painting.layerSizes};
   render(player.state);
@@ -402,12 +395,20 @@ function hidePlanning(): void {
 
 // ---- what the page says -----------------------------------------------------
 
-function render(view: PlayerState): void {
-  playButton.setAttribute('aria-label', view.playing ? 'Pause' : 'Play');
-  playButton.setAttribute('aria-pressed', String(view.playing));
-  backButton.disabled = view.position === 0;
-  aheadButton.disabled = view.finished;
-  downloadButton.hidden = !view.finished;
+/**
+ * The controls, drawn from the player's state. The only place that decides how
+ * they look, so they cannot drift from it: `null` is the state before there is
+ * a player, when there is nothing yet to play.
+ */
+function render(view: PlayerState | null): void {
+  playButton.disabled = !view;
+  playButton.setAttribute('aria-label', view?.playing ? 'Pause' : 'Play');
+  playButton.setAttribute('aria-pressed', String(view?.playing ?? false));
+  backButton.disabled = !view || view.position === 0;
+  aheadButton.disabled = !view || view.finished;
+  downloadButton.hidden = !view?.finished;
+  // The stages and the words belong to whatever is loading until it hands over.
+  if (!view) return;
   const at = stageAt(view.position);
   for (const stage of stages) {
     const filled = (view.elapsed - stage.from) / (stage.to - stage.from);
