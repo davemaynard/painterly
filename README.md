@@ -92,9 +92,12 @@ keep around, at a seventh of the memory.
   first brush and the underpainting's default, `round` is the pointillist sketch
   that never finished, `flat` is a house-painter's brush.
 - `src/demo/` is the page: photo picker, a layer-paced schedule, a player that
-  paints under a per-frame budget and scrubs from snapshots, and a planner on
-  its own thread that reports each brush as it goes and plans the other photos
-  behind the one playing.
+  paints under a per-frame budget and jumps between the brushes' stages from
+  copies taken at the handovers, and a planner on its own thread that reports
+  each brush as it goes and plans the other photos behind the one playing. The
+  controls offer stages rather than a scrubber on purpose: strokes go down over
+  one another and cannot be lifted, so there is no playing backwards, and the
+  moments worth returning to are where each brush begins.
 - `processing/` holds the 2020 Processing sketches this grew out of, untouched.
 
 TypeScript, Canvas 2D, no framework. `tsup` builds the library to `dist/` and

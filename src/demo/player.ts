@@ -1,18 +1,21 @@
-// The play loop. Owns the painter, the schedule and the scrubbing cache, and
-// answers the only two things the page asks of it: put this moment on the
+// The play loop. Owns the painter, the schedule and the copies of the canvas,
+// and answers the only two things the page asks of it: put this moment on the
 // canvas, and say when the moment changed.
+//
+// Every stroke goes down with alpha over the ones before it, so the only way
+// to reach a moment of the painting is to have painted everything up to it.
+// The moments worth returning to are few: the start of each brush, and the
+// end. A copy of the canvas is kept at each, taken as the painting passes it
+// or, ahead of that, by a second painter working through the same picture off
+// screen in the frames' spare time. Jumping to a stage is then a restore.
 //
 // Nothing here paints for longer than a frame can spare. The player holds a
 // position, the moment it is at, and the canvas trails it: playing, the two are
 // never more than a frame apart; after a jump the canvas catches up over a few
 // frames at a fixed cost each, instead of the page freezing until it is there.
-// In the frames' spare time a second painter works through the same picture off
-// screen, so that every stretch of it has a copy on hand before the visitor asks
-// for one. Without that, the first jump forward on a fresh page paid for every
-// stroke in between.
 import {type Brush, createPainter, createSchedule, type Painter, type Schedule} from '../paint';
 import type {Plan} from '../types';
-import {createSnapshots, type Snapshots, seekFrom} from './snapshots';
+import {copyMarks, seekFrom} from './jumps';
 
 export type PlayerState = {
   /** The moment the player is at, in strokes. */
@@ -55,6 +58,41 @@ export type PlayerOptions = {
 /** Painting time a frame may spend, leaving the rest of its 16.7 ms to the browser. */
 const FRAME_BUDGET_MS = 10;
 
+type Copy = {count: number; image: ImageBitmap};
+
+/** The copies held, each arriving a little after it was asked for. */
+function createCopies() {
+  let held: Copy[] = [];
+  /** Counts with a copy held or on its way, so no moment is copied twice. */
+  const taken = new Set<number>();
+  let generation = 0;
+  return {
+    keep(count: number, image: Promise<ImageBitmap>) {
+      if (taken.has(count)) return;
+      taken.add(count);
+      const wanted = generation;
+      void image.then((resolved) => {
+        if (wanted === generation) held.push({count, image: resolved});
+        else resolved.close();
+      });
+    },
+    /** The nearest copy at or before `count`, if one has arrived. */
+    nearest(count: number): Copy | undefined {
+      let best: Copy | undefined;
+      for (const copy of held) {
+        if (copy.count <= count && (!best || copy.count > best.count)) best = copy;
+      }
+      return best;
+    },
+    clear() {
+      for (const {image} of held) image.close();
+      held = [];
+      taken.clear();
+      generation++;
+    },
+  };
+}
+
 /**
  * A painter, the canvas it paints, and what its strokes have been costing.
  *
@@ -85,12 +123,8 @@ export function createPlayer(options: PlayerOptions): Player {
   const {canvas, context, painting, duration, onChange} = options;
   const total = painting.strokes.length;
   const schedule: Schedule = createSchedule(painting, duration);
-  const snapshots: Snapshots<ImageBitmap> = createSnapshots({
-    strokes: total,
-    bytesEach: canvas.width * canvas.height * 4,
-    release: (image) => image.close(),
-  });
-  const lastMark = snapshots.marksBetween(0, total).at(-1) ?? 0;
+  const marks = copyMarks(painting.layerSizes);
+  const copies = createCopies();
 
   const live: Lane = {
     painter: createPainter(context, painting, options.brush),
@@ -133,9 +167,10 @@ export function createPlayer(options: PlayerOptions): Player {
     const from = painter.painted;
     const started = performance.now();
     const stop = Math.min(target, from + Math.max(1, Math.floor(budget * lane.rate)));
-    for (const mark of snapshots.marksBetween(from, stop)) {
+    for (const mark of marks) {
+      if (mark <= from || mark > stop) continue;
       painter.paintTo(mark);
-      snapshots.keep(mark, createImageBitmap(lane.source));
+      copies.keep(mark, createImageBitmap(lane.source));
     }
     painter.paintTo(stop);
     settle(lane);
@@ -147,7 +182,7 @@ export function createPlayer(options: PlayerOptions): Player {
   };
 
   /**
-   * The off-screen painter. Works forward through the marks in the frames'
+   * The off-screen painter. Works forward through the painting in the frames'
    * spare time; where the live painter has already left a copy, it picks that
    * up rather than painting the stretch again.
    */
@@ -164,10 +199,10 @@ export function createPlayer(options: PlayerOptions): Player {
     return {
       step(budget) {
         const {painter} = lane;
-        const copy = snapshots.nearest(lastMark);
+        const copy = copies.nearest(total);
         if (copy && copy.count > painter.painted) painter.resume(copy.image, copy.count);
-        advance(lane, lastMark, budget);
-        return painter.painted >= lastMark;
+        advance(lane, total, budget);
+        return painter.painted >= total;
       },
       drop() {
         scratch.width = 0;
@@ -203,9 +238,9 @@ export function createPlayer(options: PlayerOptions): Player {
       startedAt = performance.now();
     }
     const {painter} = live;
-    const from = seekFrom(painter.painted, count, snapshots.nearest(count)?.count);
+    const copy = copies.nearest(count);
+    const from = seekFrom(painter.painted, count, copy?.count);
     if (from !== painter.painted) {
-      const copy = snapshots.nearest(count);
       if (copy && copy.count === from) painter.resume(copy.image, copy.count);
       else painter.reset();
     }
@@ -243,7 +278,7 @@ export function createPlayer(options: PlayerOptions): Player {
 
     useBrush(brush) {
       // Every copy was painted with the old brush, so none of them is any use.
-      snapshots.clear();
+      copies.clear();
       warmer?.drop();
       live.painter = createPainter(context, painting, brush);
       live.rate = 1;
@@ -255,7 +290,7 @@ export function createPlayer(options: PlayerOptions): Player {
       playing = false;
       cancelAnimationFrame(frame);
       frame = 0;
-      snapshots.clear();
+      copies.clear();
       warmer?.drop();
       warmer = null;
     },

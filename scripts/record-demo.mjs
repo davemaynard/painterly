@@ -51,16 +51,15 @@ try {
   await page.goto(`${site.url}/#photo=${PHOTO}&seed=1`);
   await page.getByRole('button', {name: 'Pause'}).waitFor({timeout: 60_000});
   await page.getByRole('button', {name: 'Pause'}).click();
-  const timeline = page.getByRole('slider', {name: 'Timeline'});
   const canvas = page.locator('canvas');
 
   // The page's own pacing: rebuild its schedule from the layer sizes it
-  // publishes on the timeline, then compress 45 s into the clip with a curve
-  // that keeps the underpainting on screen long enough to read.
-  const total = await timeline.evaluate((input) => Number(input.max));
-  const layerSizes = await timeline.evaluate((input) =>
-    input.dataset.layers.split(',').map(Number),
-  );
+  // publishes for tooling, then compress 45 s into the clip with a curve that
+  // keeps the underpainting on screen long enough to read.
+  const {total, layerSizes} = await page.evaluate(() => ({
+    total: window.painterly.total,
+    layerSizes: window.painterly.layers,
+  }));
   const schedule = createSchedule({layerSizes, strokes: {length: total}}, PAGE_SECONDS * 1000);
   const paintFrames = PAINT_SECONDS * FPS;
   const holdFrames = HOLD_SECONDS * FPS;
@@ -68,13 +67,14 @@ try {
   for (let i = 0; i <= paintFrames; i++) {
     const t = i / paintFrames;
     const count = schedule.strokesAt(PAGE_SECONDS * 1000 * t ** 1.6);
-    await timeline.evaluate((input, value) => {
-      input.value = String(value);
-      input.dispatchEvent(new Event('input', {bubbles: true}));
-      // The canvas catches up over frames rather than in one block, so wait for it.
+    // The controls offer stages, not strokes; the page keeps an exact seek for
+    // tooling. The canvas catches up over frames rather than in one block.
+    await page.evaluate((value) => {
+      window.painterly.seek(value);
+      const strip = document.querySelector('#stages');
       return new Promise((resolve) => {
         const check = () =>
-          input.dataset.painted === input.value ? resolve() : requestAnimationFrame(check);
+          strip.dataset.painted === String(value) ? resolve() : requestAnimationFrame(check);
         requestAnimationFrame(check);
       });
     }, count);

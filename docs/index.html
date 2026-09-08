@@ -78,6 +78,7 @@
       <section class="viewer">
         <header class="runner">
           <span id="status" class="readout" role="status" aria-live="polite">Loading…</span>
+          <nav id="stages" class="stages" aria-label="Stages of the painting"></nav>
         </header>
 
         <figure class="frame" aria-label="The painting">
@@ -88,11 +89,7 @@
         <fieldset class="transport">
           <legend class="visually-hidden">Playback</legend>
           <button id="play" type="button" aria-pressed="false" disabled>Play</button>
-          <label class="timeline">
-            <span class="visually-hidden">Timeline</span>
-            <input id="timeline" type="range" min="0" max="1" value="0" step="1" disabled />
-          </label>
-          <span id="clock" class="clock">0:00 / 0:45</span>
+          <button id="finish" type="button" hidden>Skip to end</button>
           <button id="again" type="button" title="Plan it again with a new seed">Paint again</button>
           <button id="download" type="button" hidden>Download PNG</button>
         </fieldset>

@@ -1,9 +1,13 @@
 // The page. Wires the controls to a player, keeps the choice of photo, seed,
 // style and brush in the URL, and turns what the player reports into words.
 // The decisions live in plan/, the look in paint/, the pacing in schedule.ts,
-// the play loop and the scrubbing cache in player.ts and snapshots.ts, and
-// planning runs on its own thread through planning.ts.
-import {type BrushName, brushes} from '../paint';
+// the play loop and the copies in player.ts, and planning runs on its own
+// thread through planning.ts.
+//
+// The controls promise only what the painting can do. Strokes go down over
+// one another and cannot be lifted, so there is no going backwards a frame at
+// a time; there are stages, one per brush, and a jump to any of them.
+import {type BrushName, brushes, createSchedule} from '../paint';
 import {defaultRadii, isStyleName, type StyleName, styles} from '../plan';
 import type {Plan} from '../types';
 import {type Photo, photos} from './photos';
@@ -38,16 +42,16 @@ const viewer = $<HTMLElement>('.viewer');
 const canvas = $<HTMLCanvasElement>('#canvas');
 const context = canvas.getContext('2d', {alpha: false}) ?? orFail('no 2d context');
 const playButton = $<HTMLButtonElement>('#play');
+const finishButton = $<HTMLButtonElement>('#finish');
 const againButton = $<HTMLButtonElement>('#again');
 const downloadButton = $<HTMLButtonElement>('#download');
-const timeline = $<HTMLInputElement>('#timeline');
 const brushSelect = $<HTMLSelectElement>('#brush');
 const styleSelect = $<HTMLSelectElement>('#style');
 const photoList = $<HTMLElement>('#photos');
 const ownTile = $<HTMLElement>('#own');
 const fileInput = $<HTMLInputElement>('#file');
 const status = $<HTMLElement>('#status');
-const clock = $<HTMLElement>('#clock');
+const stageStrip = $<HTMLElement>('#stages');
 const caption = $<HTMLElement>('#caption');
 
 type State = {
@@ -57,11 +61,15 @@ type State = {
   brush: BrushName;
 };
 
+/** One brush's stretch of the painting: its button, and where it runs in strokes and time. */
+type Stage = {button: HTMLButtonElement; start: number; from: number; to: number};
+
 let state: State = readHash();
 const planning = createPlanning();
 /** Each photo's row in the picker, to mark once its plan is on the shelf. */
 const rows = new Map<string, HTMLLabelElement>();
 let painting: Plan | null = null;
+let stages: Stage[] = [];
 /** How long the planner took, kept for the line shown when the painting finishes. */
 let plannedIn = 0;
 let player: Player | null = null;
@@ -119,6 +127,8 @@ playButton.addEventListener('click', () => {
   else player.play();
 });
 
+finishButton.addEventListener('click', () => player?.seek(player.total));
+
 againButton.addEventListener('click', () => {
   state = {...state, seed: state.seed + 1};
   void load();
@@ -140,23 +150,6 @@ brushSelect.addEventListener('change', () => {
   player?.useBrush(brushes[state.brush]);
 });
 
-timeline.addEventListener('input', () => {
-  if (!player) return;
-  // Move before pausing. Pausing reports a state, and the report would put the
-  // thumb back where the painting was, throwing away the position the visitor
-  // just chose; the browser then sees no change to commit on release, and the
-  // painting would stay paused as well.
-  player.seek(Number(timeline.value));
-  player.pause();
-});
-
-// Letting go picks the painting up from where you dropped it: the timeline is a
-// way to move through the painting, not a way to stop it.
-timeline.addEventListener('change', () => {
-  if (!player || player.state.finished) return;
-  player.play();
-});
-
 document.addEventListener('keydown', (event) => {
   if (event.key !== ' ' || event.target !== document.body || !player) return;
   event.preventDefault();
@@ -175,6 +168,68 @@ downloadButton.addEventListener('click', () => {
   }, 'image/png');
 });
 
+// ---- the stages -------------------------------------------------------------
+
+/**
+ * One button per brush, each as wide as the time its brush takes. The widths
+ * come from the schedule, which paces by brush count alone, so they are known
+ * before the strokes are.
+ */
+function buildStages(count: number): void {
+  const pacing = createSchedule(standIn(count), DURATION_MS[state.style]);
+  stages = [];
+  stageStrip.replaceChildren();
+  for (let i = 0; i < count; i++) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'stage';
+    button.setAttribute('aria-label', `Brush ${i + 1} of ${count}`);
+    button.title = `Jump to brush ${i + 1}`;
+    const from = pacing.timeOf(i);
+    const to = pacing.timeOf(i + 1);
+    button.style.setProperty('--share', String(to - from));
+    const stage: Stage = {button, start: 0, from, to};
+    button.addEventListener('click', () => player?.seek(stage.start));
+    stages.push(stage);
+    stageStrip.append(button);
+  }
+}
+
+/** A plan of `count` brushes with one stroke each: enough for the schedule to pace. */
+function standIn(count: number): Plan {
+  return {
+    seed: 0,
+    width: 0,
+    height: 0,
+    ground: [0, 0, 0],
+    strokes: [],
+    layerSizes: Array(count).fill(1),
+  };
+}
+
+/** Once the strokes are known: where each brush begins, and the time it really spans. */
+function placeStages(plan: Plan, duration: number): void {
+  const sizes = plan.layerSizes.filter((size) => size > 0);
+  if (sizes.length !== stages.length) buildStages(sizes.length);
+  const pacing = createSchedule(plan, duration);
+  let start = 0;
+  stages.forEach((stage, i) => {
+    stage.start = start;
+    stage.from = pacing.timeOf(start);
+    start += sizes[i] as number;
+    stage.to = pacing.timeOf(start);
+  });
+}
+
+/** The stage `position` falls in. */
+function stageAt(position: number): number {
+  let at = 0;
+  stages.forEach((stage, i) => {
+    if (position >= stage.start) at = i;
+  });
+  return at;
+}
+
 // ---- loading and planning ---------------------------------------------------
 
 async function load(): Promise<void> {
@@ -186,12 +241,9 @@ async function load(): Promise<void> {
   playButton.disabled = true;
   playButton.textContent = 'Play';
   playButton.setAttribute('aria-pressed', 'false');
-  timeline.disabled = true;
+  finishButton.hidden = true;
   downloadButton.hidden = true;
   setStatus('Loading the photo…');
-  // Every painting takes the same time whatever the photo, so the clock is
-  // right before a single stroke has been planned.
-  showClock(0, DURATION_MS[state.style]);
   caption.replaceChildren(...captionFor(state.photo));
 
   const image = await loadImage(state.photo.file);
@@ -203,6 +255,7 @@ async function load(): Promise<void> {
 
   const options = styles[state.style].options(width, height);
   const brushCount = (options.radii ?? defaultRadii(width, height)).length;
+  buildStages(brushCount);
   const key = planKey(state.photo, state.seed, state.style);
   if (!planning.has(key)) showPlanning(0, brushCount);
   const started = performance.now();
@@ -219,11 +272,7 @@ async function load(): Promise<void> {
   if (token !== loading) return;
   plannedIn = Math.round(performance.now() - started);
   hidePlanning();
-  timeline.max = String(painting.strokes.length);
-  timeline.value = '0';
-  // Where each brush hands over, for tooling that wants to pace itself like the page does.
-  timeline.dataset.layers = painting.layerSizes.join(',');
-  timeline.disabled = false;
+  placeStages(painting, DURATION_MS[state.style]);
 
   player = createPlayer({
     canvas,
@@ -234,6 +283,8 @@ async function load(): Promise<void> {
     onChange: render,
   });
   playButton.disabled = false;
+  // Exact positions the controls do not offer, for the recorder and the tests.
+  window.painterly = {seek: player.seek, total: player.total, layers: painting.layerSizes};
   render(player.state);
   // Autoplay is the point of the page, unless the visitor has asked for less motion.
   if (matchMedia('(prefers-reduced-motion: reduce)').matches) setStatus('Ready. Press play.');
@@ -299,47 +350,40 @@ function showGhost(image: HTMLImageElement): void {
   context.restore();
 }
 
-/** The rule under the running head fills brush by brush, and the words keep count. */
+/** The stages fill in a quieter ink as each brush is planned, and the words keep count. */
 function showPlanning(planned: number, of: number): void {
   viewer.setAttribute('aria-busy', 'true');
-  // A sliver from the start, so the rule is seen to be live before the first brush lands.
-  viewer.style.setProperty('--planned', String(Math.max(0.04, planned / of)));
+  stages.forEach((stage, i) => {
+    stage.button.disabled = true;
+    // A sliver on the brush being planned, so the strip is seen to be live.
+    stage.button.style.setProperty('--fill', i < planned ? '1' : i === planned ? '0.04' : '0');
+  });
   setStatus(`Planning brush ${Math.min(planned + 1, of)} of ${of}…`);
 }
 
 function hidePlanning(): void {
-  viewer.style.setProperty('--planned', '1');
   viewer.removeAttribute('aria-busy');
+  for (const stage of stages) stage.button.disabled = false;
 }
 
 // ---- what the page says -----------------------------------------------------
 
 function render(view: PlayerState): void {
-  // Written only when it differs, so a report during a drag never touches the
-  // control the visitor is holding.
-  const at = String(view.position);
-  if (timeline.value !== at) timeline.value = at;
-  // Where the canvas actually is, for tooling that has to wait for it to catch up.
-  timeline.dataset.painted = String(view.painted);
   playButton.textContent = view.playing ? 'Pause' : 'Play';
   playButton.setAttribute('aria-pressed', String(view.playing));
+  finishButton.hidden = view.finished;
   downloadButton.hidden = !view.finished;
-  showClock(view.elapsed, player?.duration ?? DURATION_MS[state.style]);
-  setStatus(view.finished ? finishedText() : progressText(view.position));
-}
-
-/** Which brush is working. How far along the painting is, the timeline already shows. */
-function progressText(count: number): string {
-  if (!painting) return '';
-  let layer = 0;
-  let boundary = 0;
-  for (const size of painting.layerSizes) {
-    boundary += size;
-    if (count < boundary) break;
-    layer++;
-  }
-  const layers = brushCount(painting);
-  return `Brush ${Math.min(layer + 1, layers)} of ${layers}`;
+  const at = stageAt(view.position);
+  stages.forEach((stage, i) => {
+    const filled = (view.elapsed - stage.from) / (stage.to - stage.from);
+    stage.button.style.setProperty('--fill', String(Math.min(1, Math.max(0, filled))));
+    if (i === at) stage.button.setAttribute('aria-current', 'step');
+    else stage.button.removeAttribute('aria-current');
+  });
+  // Where the player is and where the canvas has got to, for tooling that waits on them.
+  stageStrip.dataset.position = String(view.position);
+  stageStrip.dataset.painted = String(view.painted);
+  setStatus(view.finished ? finishedText() : `Brush ${at + 1} of ${stages.length}`);
 }
 
 /** The one number worth keeping, shown once the picture is finished. */
@@ -347,19 +391,6 @@ function finishedText(): string {
   if (!painting) return '';
   const strokes = painting.strokes.length.toLocaleString();
   return `${strokes} strokes, planned in ${(plannedIn / 1000).toFixed(1)} s`;
-}
-
-function showClock(elapsed: number, total: number): void {
-  clock.textContent = `${asMinutes(elapsed)} / ${asMinutes(total)}`;
-}
-
-function asMinutes(ms: number): string {
-  const seconds = Math.max(0, Math.round(ms / 1000));
-  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
-}
-
-function brushCount(current: Plan): number {
-  return current.layerSizes.filter((n) => n > 0).length;
 }
 
 function setStatus(text: string): void {
@@ -414,6 +445,13 @@ function writeHash(): void {
     brush: state.brush,
   });
   history.replaceState(null, '', `#${params}`);
+}
+
+declare global {
+  interface Window {
+    /** Exact positions the controls do not offer, for the recorder and the tests. */
+    painterly?: {seek(count: number): void; total: number; layers: number[]};
+  }
 }
 
 void load();

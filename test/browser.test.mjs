@@ -31,36 +31,40 @@ async function open(hash, viewport = {width: 1280, height: 900}) {
   return page;
 }
 
-/** Drags the timeline to `count` strokes and waits until the canvas has caught up. */
-async function seek(page, count) {
-  const timeline = page.getByRole('slider', {name: 'Timeline'});
-  await timeline.evaluate((input, value) => {
-    input.value = String(value);
-    input.dispatchEvent(new Event('input', {bubbles: true}));
-  }, count);
-  await timeline.evaluate(caughtUp);
-}
-
-/** Resolves once the canvas shows the strokes the timeline is set to. Runs in the page. */
-function caughtUp(input) {
+/** Resolves once the canvas shows the strokes the player is at. Runs in the page. */
+function caughtUp(strip) {
   return new Promise((resolve) => {
     const check = () =>
-      input.dataset.painted === input.value ? resolve() : requestAnimationFrame(check);
+      strip.dataset.painted === strip.dataset.position ? resolve() : requestAnimationFrame(check);
     requestAnimationFrame(check);
   });
 }
 
+const settled = (page) => page.locator('#stages').evaluate(caughtUp);
+
+/** Jumps to the start of brush `n` and waits for the canvas. */
+async function toBrush(page, n) {
+  await page.getByRole('button', {name: new RegExp(`^Brush ${n} of`)}).click();
+  await settled(page);
+}
+
+async function toEnd(page) {
+  await page.getByRole('button', {name: 'Skip to end'}).click();
+  await settled(page);
+}
+
 const canvasPng = (page) => page.evaluate(() => document.querySelector('canvas').toDataURL());
-const strokeCount = (page) =>
-  page.getByRole('slider', {name: 'Timeline'}).evaluate((input) => Number(input.max));
+const strokeCount = (page) => page.evaluate(() => window.painterly.total);
+const positionOf = (page) =>
+  page.locator('#stages').evaluate((strip) => Number(strip.dataset.position));
 
 test('the page paints: the canvas leaves the ground colour and reaches Done', async () => {
   const page = await open('photo=mist&seed=1');
-  await seek(page, 0);
+  await toBrush(page, 1);
   const ground = await canvasPng(page);
   const total = await strokeCount(page);
   assert.ok(total > 10_000, `only ${total} strokes`);
-  await seek(page, total);
+  await toEnd(page);
   assert.notEqual(await canvasPng(page), ground);
   await assert.doesNotReject(page.getByText(/strokes, planned in/).waitFor());
   await assert.doesNotReject(page.getByRole('button', {name: 'Download PNG'}).waitFor());
@@ -68,50 +72,32 @@ test('the page paints: the canvas leaves the ground colour and reaches Done', as
 });
 
 test('the same photo and seed paint the same pixels in two separate loads', async () => {
-  const a = await open('photo=oranges&seed=3');
-  const b = await open('photo=oranges&seed=3');
-  const total = await strokeCount(a);
-  assert.equal(total, await strokeCount(b));
-  await seek(a, total);
-  await seek(b, total);
+  const a = await open('photo=mist&seed=1');
+  const b = await open('photo=mist&seed=1');
+  await toEnd(a);
+  await toEnd(b);
   assert.equal(await canvasPng(a), await canvasPng(b));
   await a.close();
   await b.close();
 });
 
-test('scrubbing backwards lands on the same pixels as painting forward', async () => {
-  const page = await open('photo=oranges&seed=1');
-  const total = await strokeCount(page);
-  const middle = Math.floor(total * 0.55);
-  await seek(page, middle);
-  const forward = await canvasPng(page);
-  await seek(page, total);
-  await seek(page, middle);
-  assert.equal(await canvasPng(page), forward);
+test('jumping back to a brush lands on the same pixels as painting up to it', async () => {
+  const page = await open('photo=mist&seed=1');
+  // Cold: from the ground, every stroke up to the third brush.
+  await toBrush(page, 3);
+  const painted = await canvasPng(page);
+  // Warm: from the copy taken at the handover as the painting passed it.
+  await toEnd(page);
+  await toBrush(page, 3);
+  assert.equal(await canvasPng(page), painted);
   await page.close();
 });
 
-test('jumping forward lands on the same pixels as painting the way there', async () => {
-  // One page paints its way to the target from near the start; the other has
-  // played through, so it resumes from the nearest snapshot and paints the rest.
-  const painted = await open('photo=oranges&seed=1');
-  const jumped = await open('photo=oranges&seed=1');
-  const total = await strokeCount(painted);
-  const target = Math.floor(total * 0.8);
-  await seek(painted, target);
-  await seek(jumped, total);
-  await seek(jumped, 0);
-  await seek(jumped, target);
-  assert.equal(await canvasPng(jumped), await canvasPng(painted));
-  await painted.close();
-  await jumped.close();
-});
-
 test('a different seed paints a different picture', async () => {
-  const a = await open('photo=boats&seed=1');
-  const b = await open('photo=boats&seed=2');
-  await seek(a, 2000);
-  await seek(b, 2000);
+  const a = await open('photo=mist&seed=1');
+  const b = await open('photo=mist&seed=2');
+  await toEnd(a);
+  await toEnd(b);
   assert.notEqual(await canvasPng(a), await canvasPng(b));
   await a.close();
   await b.close();
@@ -119,11 +105,12 @@ test('a different seed paints a different picture', async () => {
 
 test('changing the brush repaints what is on the canvas', async () => {
   const page = await open('photo=mist&seed=1');
-  await seek(page, 3000);
+  await toBrush(page, 2);
   const bristle = await canvasPng(page);
-  await page.getByLabel('Brush', {exact: true}).selectOption('round');
+  await page.getByLabel('Brush', {exact: true}).selectOption('ribbon');
+  await settled(page);
   assert.notEqual(await canvasPng(page), bristle);
-  assert.match(page.url(), /brush=round/);
+  assert.match(page.url(), /brush=ribbon/);
   await page.close();
 });
 
@@ -133,9 +120,11 @@ test('the underpainting style stops after one brush and keeps its own URL', asyn
   assert.ok(total > 100 && total < 3000, `${total} strokes is not a single big brush`);
   assert.equal(await page.getByLabel('Brush', {exact: true}).inputValue(), 'ribbon');
   await assert.doesNotReject(page.getByText('Brush 1 of 1').waitFor());
+  assert.equal(await page.getByRole('button', {name: /^Brush \d of/}).count(), 1);
   await page.getByLabel('Style', {exact: true}).selectOption('painting');
   await page.getByRole('button', {name: 'Pause'}).waitFor({timeout: 60_000});
   assert.ok((await strokeCount(page)) > 10_000);
+  assert.equal(await page.getByRole('button', {name: /^Brush \d of/}).count(), 5);
   assert.match(page.url(), /style=painting/);
   await page.close();
 });
@@ -148,34 +137,39 @@ test('at phone width nothing overflows and the controls are reachable', async ()
   assert.equal(overflow, 0, `page overflows by ${overflow}px`);
   const canvasBox = await page.locator('canvas').boundingBox();
   assert.ok(canvasBox.width <= 390 && canvasBox.width > 300, `canvas is ${canvasBox.width}px wide`);
-  for (const name of ['Play', 'Paint again']) {
+  for (const name of ['Play', 'Skip to end', 'Paint again']) {
     assert.ok(await page.getByRole('button', {name}).isVisible(), `${name} is visible`);
   }
   assert.ok(await page.getByRole('radio', {name: /golden retriever/}).isChecked());
   await page.close();
 });
 
-test('clicking the timeline while playing jumps there and keeps playing', async () => {
+test('clicking a stage while playing jumps there and keeps playing', async () => {
   const page = await open('photo=mist&seed=1');
   await page.getByRole('button', {name: 'Play'}).click();
-  const timeline = page.getByRole('slider', {name: 'Timeline'});
-  const total = await strokeCount(page);
-  const box = await timeline.boundingBox();
-  // A real click, not a synthetic event. The bug this guards against was the
-  // page writing the old position back into the slider mid-click, after which
-  // the browser saw nothing to commit on release and the painting stayed paused.
-  await page.mouse.click(box.x + box.width * 0.7, box.y + box.height / 2);
-  await timeline.evaluate(caughtUp);
-  const landed = Number(await timeline.inputValue());
-  assert.ok(landed > total * 0.6 && landed < total * 0.85, `landed at ${landed} of ${total}`);
+  const starts = await page.evaluate(() => {
+    let at = 0;
+    return window.painterly.layers.map((size) => {
+      const start = at;
+      at += size;
+      return start;
+    });
+  });
+  await page.getByRole('button', {name: /^Brush 4 of/}).click();
+  await settled(page);
+  const landed = await positionOf(page);
+  assert.ok(
+    landed >= starts[3] && landed < starts[4],
+    `landed at ${landed}, brush 4 starts at ${starts[3]}`,
+  );
   await assert.doesNotReject(page.getByRole('button', {name: 'Pause'}).waitFor({timeout: 1000}));
   await page.waitForTimeout(400);
-  const later = Number(await timeline.inputValue());
-  assert.ok(later > landed, `the painting stopped at ${landed}`);
+  assert.ok((await positionOf(page)) > landed, `the painting stopped at ${landed}`);
   await page.close();
 });
 
-test('a jump forward on a fresh page never blocks a frame for long', async () => {
+/** A page with a long-task observer installed before anything loads. */
+async function observed(hash) {
   const page = await browser.newPage({viewport: {width: 1280, height: 900}});
   await page.addInitScript(() => {
     window.longTasks = [];
@@ -183,21 +177,45 @@ test('a jump forward on a fresh page never blocks a frame for long', async () =>
       for (const entry of list.getEntries()) window.longTasks.push(Math.round(entry.duration));
     }).observe({type: 'longtask'});
   });
-  await page.goto(`${site.url}/#photo=golden&seed=1`);
+  await page.goto(`${site.url}/#${hash}`);
   await page.getByRole('button', {name: 'Pause'}).waitFor({timeout: 60_000});
-  // Planning is one long task by nature; the jump must not be another.
-  await page.evaluate(() => window.longTasks.splice(0));
-  const timeline = page.getByRole('slider', {name: 'Timeline'});
-  const box = await timeline.boundingBox();
-  await page.mouse.click(box.x + box.width * 0.9, box.y + box.height / 2);
-  await timeline.evaluate(caughtUp);
-  const tasks = await page.evaluate(() => window.longTasks);
+  return page;
+}
+
+const longTasks = (page) => page.evaluate(() => window.longTasks.splice(0));
+
+test('skipping to the end on a fresh page never blocks a frame for long', async () => {
+  const page = await observed('photo=golden&seed=1');
+  await longTasks(page);
+  await toEnd(page);
+  const tasks = await longTasks(page);
   const longest = Math.max(0, ...tasks);
   assert.ok(longest < 100, `a frame blocked for ${longest} ms (${tasks.join(', ')})`);
   await page.close();
 });
 
-test('while a photo is planned the picture shows the photo, the rule fills, then it paints', async () => {
+test('the first seconds of painting never block a frame for long', async () => {
+  const page = await observed('photo=golden&seed=1');
+  // The first brush's strokes are the dearest; the budget must hold there too.
+  await longTasks(page);
+  await page.waitForTimeout(2_000);
+  const tasks = await longTasks(page);
+  const longest = Math.max(0, ...tasks);
+  assert.ok(longest < 60, `a frame blocked for ${longest} ms (${tasks.join(', ')})`);
+  await page.close();
+});
+
+test('once the copies are made, going back to an earlier brush is a restore', async () => {
+  const page = await open('photo=golden&seed=1');
+  await page.waitForTimeout(5_000);
+  const started = Date.now();
+  await toBrush(page, 2);
+  const took = Date.now() - started;
+  assert.ok(took < 250, `a jump back took ${took} ms`);
+  await page.close();
+});
+
+test('while a photo is planned the picture shows the photo, the stages fill, then it paints', async () => {
   const page = await open('photo=mist&seed=1');
   const viewer = page.locator('section[aria-busy="true"]');
   await page.getByRole('radio', {name: /oranges/i}).check();
@@ -214,10 +232,7 @@ test('while a photo is planned the picture shows the photo, the rule fills, then
   await assert.doesNotReject(page.getByText(/Planning brush \d of \d/).waitFor({timeout: 5_000}));
   await page.getByRole('button', {name: 'Pause'}).waitFor({timeout: 60_000});
   assert.equal(await viewer.count(), 0);
-  const filled = await page
-    .locator('.viewer')
-    .evaluate((el) => el.style.getPropertyValue('--planned'));
-  assert.equal(filled, '1');
+  assert.equal(await page.getByRole('button', {name: /^Brush \d of 5$/}).count(), 5);
   await page.close();
 });
 
@@ -230,24 +245,5 @@ test('a photo planned ahead starts painting at once', async () => {
   await page.getByRole('button', {name: 'Pause'}).waitFor({timeout: 5_000});
   const took = Date.now() - started;
   assert.ok(took < 1_000, `a planned-ahead photo took ${took} ms to start`);
-  await page.close();
-});
-
-test('the first seconds of painting never block a frame for long', async () => {
-  const page = await browser.newPage({viewport: {width: 1280, height: 900}});
-  await page.addInitScript(() => {
-    window.longTasks = [];
-    new PerformanceObserver((list) => {
-      for (const entry of list.getEntries()) window.longTasks.push(Math.round(entry.duration));
-    }).observe({type: 'longtask'});
-  });
-  await page.goto(`${site.url}/#photo=golden&seed=1`);
-  await page.getByRole('button', {name: 'Pause'}).waitFor({timeout: 60_000});
-  // The first brush's strokes are the dearest; the budget must hold there too.
-  await page.evaluate(() => window.longTasks.splice(0));
-  await page.waitForTimeout(2_000);
-  const tasks = await page.evaluate(() => window.longTasks);
-  const longest = Math.max(0, ...tasks);
-  assert.ok(longest < 60, `a frame blocked for ${longest} ms (${tasks.join(', ')})`);
   await page.close();
 });
