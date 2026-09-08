@@ -78,7 +78,6 @@
       <section class="viewer">
         <header class="runner">
           <span id="status" class="readout" role="status" aria-live="polite">Loading…</span>
-          <nav id="stages" class="stages" aria-label="Stages of the painting"></nav>
         </header>
 
         <figure class="frame" aria-label="The painting">
@@ -88,8 +87,37 @@
 
         <fieldset class="transport">
           <legend class="visually-hidden">Playback</legend>
-          <button id="play" type="button" aria-pressed="false" disabled>Play</button>
-          <button id="finish" type="button" hidden>Skip to end</button>
+          <div class="group">
+            <button id="back" type="button" class="icon-button" aria-label="Previous brush" disabled>
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <rect x="5" y="5" width="1.6" height="14" />
+                <path d="M19 5 19 19 8.4 12Z" />
+              </svg>
+            </button>
+            <button
+              id="play"
+              type="button"
+              class="icon-button primary"
+              aria-pressed="false"
+              aria-label="Play"
+              disabled
+            >
+              <svg class="glyph-play" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M7 4.5 7 19.5 19.5 12Z" />
+              </svg>
+              <svg class="glyph-pause" viewBox="0 0 24 24" aria-hidden="true">
+                <rect x="7.4" y="5" width="1.6" height="14" />
+                <rect x="15" y="5" width="1.6" height="14" />
+              </svg>
+            </button>
+            <button id="ahead" type="button" class="icon-button" aria-label="Next brush" disabled>
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M5 5 5 19 15.6 12Z" />
+                <rect x="17.4" y="5" width="1.6" height="14" />
+              </svg>
+            </button>
+          </div>
+          <div id="stages" class="stages" aria-hidden="true"></div>
           <button id="again" type="button" title="Plan it again with a new seed">Paint again</button>
           <button id="download" type="button" hidden>Download PNG</button>
         </fieldset>

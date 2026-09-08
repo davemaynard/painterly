@@ -42,25 +42,45 @@ function caughtUp(strip) {
 
 const settled = (page) => page.locator('#stages').evaluate(caughtUp);
 
-/** Jumps to the start of brush `n` and waits for the canvas. */
-async function toBrush(page, n) {
-  await page.getByRole('button', {name: new RegExp(`^Brush ${n} of`)}).click();
+/**
+ * Moves to an exact stroke count and waits for the canvas. The transport only
+ * offers brushes, so tests that need a precise moment use the page's own hook,
+ * the one the recorder uses; the transport buttons have their own tests.
+ */
+async function seekTo(page, count) {
+  await page.evaluate((value) => window.painterly.seek(value), count);
   await settled(page);
 }
 
-async function toEnd(page) {
-  await page.getByRole('button', {name: 'Skip to end'}).click();
-  await settled(page);
+/** Where each brush begins, in strokes. */
+const brushStarts = (page) =>
+  page.evaluate(() => {
+    let at = 0;
+    return window.painterly.layers
+      .filter((size) => size > 0)
+      .map((size) => {
+        const start = at;
+        at += size;
+        return start;
+      });
+  });
+
+/** Jumps to the start of brush `n`, counting from one. */
+async function toBrush(page, n) {
+  await seekTo(page, (await brushStarts(page))[n - 1]);
 }
+
+const toEnd = async (page) => seekTo(page, await strokeCount(page));
 
 const canvasPng = (page) => page.evaluate(() => document.querySelector('canvas').toDataURL());
 const strokeCount = (page) => page.evaluate(() => window.painterly.total);
 const positionOf = (page) =>
   page.locator('#stages').evaluate((strip) => Number(strip.dataset.position));
+const stageCount = (page) => page.locator('#stages .stage').count();
 
 test('the page paints: the canvas leaves the ground colour and reaches Done', async () => {
   const page = await open('photo=mist&seed=1');
-  await toBrush(page, 1);
+  await seekTo(page, 0);
   const ground = await canvasPng(page);
   const total = await strokeCount(page);
   assert.ok(total > 10_000, `only ${total} strokes`);
@@ -120,11 +140,11 @@ test('the underpainting style stops after one brush and keeps its own URL', asyn
   assert.ok(total > 100 && total < 3000, `${total} strokes is not a single big brush`);
   assert.equal(await page.getByLabel('Brush', {exact: true}).inputValue(), 'ribbon');
   await assert.doesNotReject(page.getByText('Brush 1 of 1').waitFor());
-  assert.equal(await page.getByRole('button', {name: /^Brush \d of/}).count(), 1);
+  assert.equal(await stageCount(page), 1);
   await page.getByLabel('Style', {exact: true}).selectOption('painting');
   await page.getByRole('button', {name: 'Pause'}).waitFor({timeout: 60_000});
   assert.ok((await strokeCount(page)) > 10_000);
-  assert.equal(await page.getByRole('button', {name: /^Brush \d of/}).count(), 5);
+  assert.equal(await stageCount(page), 5);
   assert.match(page.url(), /style=painting/);
   await page.close();
 });
@@ -137,31 +157,102 @@ test('at phone width nothing overflows and the controls are reachable', async ()
   assert.equal(overflow, 0, `page overflows by ${overflow}px`);
   const canvasBox = await page.locator('canvas').boundingBox();
   assert.ok(canvasBox.width <= 390 && canvasBox.width > 300, `canvas is ${canvasBox.width}px wide`);
-  for (const name of ['Play', 'Skip to end', 'Paint again']) {
+  for (const name of ['Previous brush', 'Play', 'Next brush', 'Paint again']) {
     assert.ok(await page.getByRole('button', {name}).isVisible(), `${name} is visible`);
   }
   assert.ok(await page.getByRole('radio', {name: /golden retriever/}).isChecked());
   await page.close();
 });
 
-test('clicking a stage while playing jumps there and keeps playing', async () => {
+test('the stages are shown, not operated: nothing on the strip is a control', async () => {
   const page = await open('photo=mist&seed=1');
+  assert.equal(await stageCount(page), 5);
+  assert.equal(await page.locator('#stages').getByRole('button').count(), 0);
+  await page.close();
+});
+
+test('play and pause are one button showing one glyph at a time', async () => {
+  const page = await open('photo=mist&seed=1');
+  const glyphs = () =>
+    page
+      .locator('#play svg')
+      .evaluateAll((all) =>
+        all
+          .filter((svg) => svg.getBoundingClientRect().height > 0)
+          .map((svg) => svg.className.baseVal),
+      );
+  assert.deepEqual(await glyphs(), ['glyph-play']);
   await page.getByRole('button', {name: 'Play'}).click();
-  const starts = await page.evaluate(() => {
-    let at = 0;
-    return window.painterly.layers.map((size) => {
-      const start = at;
-      at += size;
-      return start;
-    });
-  });
-  await page.getByRole('button', {name: /^Brush 4 of/}).click();
+  assert.deepEqual(await glyphs(), ['glyph-pause']);
+  await page.getByRole('button', {name: 'Pause'}).click();
+  assert.deepEqual(await glyphs(), ['glyph-play']);
+  await page.close();
+});
+
+test('the transport is disabled where it would do nothing', async () => {
+  const page = await open('photo=mist&seed=1');
+  await seekTo(page, 0);
+  assert.ok(await page.getByRole('button', {name: 'Previous brush'}).isDisabled());
+  assert.ok(await page.getByRole('button', {name: 'Next brush'}).isEnabled());
+  await toEnd(page);
+  assert.ok(await page.getByRole('button', {name: 'Previous brush'}).isEnabled());
+  assert.ok(await page.getByRole('button', {name: 'Next brush'}).isDisabled());
+  // While a new photo is planned, nothing on the transport works.
+  await page.getByRole('radio', {name: /oranges/i}).check();
+  await page.locator('section[aria-busy="true"]').waitFor({timeout: 5_000});
+  for (const name of ['Previous brush', 'Play', 'Next brush']) {
+    assert.ok(
+      await page.getByRole('button', {name}).isDisabled(),
+      `${name} is live while planning`,
+    );
+  }
+  await page.close();
+});
+
+test('next goes on a brush, and from the last brush to the finished picture', async () => {
+  const page = await open('photo=mist&seed=1');
+  const starts = await brushStarts(page);
+  await seekTo(page, 0);
+  const next = page.getByRole('button', {name: 'Next brush'});
+  for (let brush = 1; brush < starts.length; brush++) {
+    await next.click();
+    await settled(page);
+    assert.equal(await positionOf(page), starts[brush], `next landed wrong from brush ${brush}`);
+  }
+  await next.click();
+  await settled(page);
+  assert.equal(await positionOf(page), await strokeCount(page));
+  await assert.doesNotReject(page.getByRole('button', {name: 'Download PNG'}).waitFor());
+  assert.ok(await next.isDisabled(), 'next is still offered at the end');
+  await page.close();
+});
+
+test('back restarts the brush being painted, then goes to the one before', async () => {
+  const page = await open('photo=mist&seed=1');
+  const starts = await brushStarts(page);
+  const back = page.getByRole('button', {name: 'Previous brush'});
+  // Part-way into the third brush: back returns to its start.
+  await seekTo(page, Math.round((starts[2] + starts[3]) / 2));
+  await back.click();
+  await settled(page);
+  assert.equal(await positionOf(page), starts[2]);
+  // Already at its start: back goes to the second brush.
+  await back.click();
+  await settled(page);
+  assert.equal(await positionOf(page), starts[1]);
+  await seekTo(page, 0);
+  assert.ok(await back.isDisabled(), 'back is still offered at the start');
+  await page.close();
+});
+
+test('skipping a brush while playing keeps it playing', async () => {
+  const page = await open('photo=mist&seed=1');
+  const starts = await brushStarts(page);
+  await page.getByRole('button', {name: 'Play'}).click();
+  await page.getByRole('button', {name: 'Next brush'}).click();
   await settled(page);
   const landed = await positionOf(page);
-  assert.ok(
-    landed >= starts[3] && landed < starts[4],
-    `landed at ${landed}, brush 4 starts at ${starts[3]}`,
-  );
+  assert.ok(landed >= starts[1], `landed at ${landed}, the second brush starts at ${starts[1]}`);
   await assert.doesNotReject(page.getByRole('button', {name: 'Pause'}).waitFor({timeout: 1000}));
   await page.waitForTimeout(400);
   assert.ok((await positionOf(page)) > landed, `the painting stopped at ${landed}`);
@@ -232,7 +323,7 @@ test('while a photo is planned the picture shows the photo, the stages fill, the
   await assert.doesNotReject(page.getByText(/Planning brush \d of \d/).waitFor({timeout: 5_000}));
   await page.getByRole('button', {name: 'Pause'}).waitFor({timeout: 60_000});
   assert.equal(await viewer.count(), 0);
-  assert.equal(await page.getByRole('button', {name: /^Brush \d of 5$/}).count(), 5);
+  assert.equal(await stageCount(page), 5);
   await page.close();
 });
 

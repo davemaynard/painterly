@@ -269,8 +269,7 @@ legend,
   color: var(--muted);
 }
 
-/* The viewer: a running head with the stages, the plate, and a transport
-   that stays put. */
+/* The viewer: a running head, the plate, and a transport that stays put. */
 
 .viewer {
   display: grid;
@@ -280,65 +279,14 @@ legend,
 }
 
 .runner {
-  display: grid;
-  gap: 0.625rem;
-  padding: 1.5rem 0 0;
+  display: flex;
+  gap: 1rem;
+  padding: 1.5rem 0;
+  border-bottom: 1px solid var(--line);
   font-size: 0.75rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--muted);
-}
-
-/* The stages: the rule under the running head, cut at each brush's handover.
-   Each cut is a button, as wide as the time its brush takes; the played part
-   fills in ink. While the planner works the same rule fills in the quieter
-   ink, brush by brush. */
-
-.stages {
-  display: flex;
-  height: 1.25rem;
-}
-
-.stage {
-  flex: var(--share, 1) 1 0;
-  position: relative;
-  margin: 0;
-  padding: 0;
-  background: none;
-  border: 0;
-  border-bottom: 1px solid var(--line);
-  cursor: pointer;
-  transition: border-color 150ms var(--ease);
-}
-
-.stage:disabled {
-  cursor: default;
-}
-
-/* A tick where one brush hands over to the next. */
-.stage + .stage::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  bottom: 0;
-  width: 1px;
-  height: 0.375rem;
-  background: var(--line);
-}
-
-.stage::after {
-  content: "";
-  position: absolute;
-  inset: auto 0 -1px 0;
-  height: 1px;
-  background: var(--ink);
-  transform: scaleX(var(--fill, 0));
-  transform-origin: left;
-}
-
-.viewer[aria-busy="true"] .stage::after {
-  background: var(--muted);
-  transition: transform 400ms var(--ease);
 }
 
 .readout {
@@ -406,38 +354,106 @@ legend,
   transform: scale(0.97);
 }
 
-#play {
-  padding: 0.45rem 1.25rem;
-  background: var(--ink);
-  color: var(--paper);
-  min-width: 5.75rem;
+/* The three buttons a DVD player has, drawn here rather than imported: sharp
+   triangles and hairline bars, the same geometry as the carets on the selects
+   and the ticks on the stages. Play and pause are one button; the pressed
+   state swaps which glyph shows. */
+
+.group {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
 }
 
-#play[aria-pressed="true"] {
-  background: none;
-  color: var(--ink);
-  box-shadow: inset 0 0 0 1px var(--ink);
+.transport .icon-button {
+  display: grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2rem;
+  padding: 0;
+}
+
+.icon-button svg {
+  display: block;
+  width: 20px;
+  height: 20px;
+  fill: currentColor;
+}
+
+.transport .icon-button.primary {
+  width: 2.75rem;
+  background: var(--ink);
+  color: var(--paper);
+}
+
+/* One glyph at a time. These have to out-rank `.icon-button svg` above, which
+   is why they name the button as well as the glyph. */
+.icon-button .glyph-pause,
+#play[aria-pressed="true"] .glyph-play {
+  display: none;
+}
+
+#play[aria-pressed="true"] .glyph-pause {
+  display: block;
+}
+
+/* The stages: the rule beside the buttons, cut where each brush hands over to
+   the next and as wide as the time that brush takes. The played part fills in
+   ink; while the planner works the same rule fills in the quieter ink, brush
+   by brush. It shows where the painting is; the buttons move it. */
+
+.stages {
+  flex: 1;
+  display: flex;
+  min-width: 4rem;
+}
+
+/* No height of its own, so the rule lands on the buttons' centre line and the
+   ticks rise from it. */
+.stage {
+  flex: var(--share, 1) 1 0;
+  position: relative;
+  height: 0;
+  border-bottom: 1px solid var(--line);
+}
+
+/* A tick where one brush hands over to the next. */
+.stage + .stage::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 1px;
+  height: 0.375rem;
+  background: var(--line);
+}
+
+.stage::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 -1px 0;
+  height: 1px;
+  background: var(--ink);
+  transform: scaleX(var(--fill, 0));
+  transform-origin: left;
+}
+
+.viewer[aria-busy="true"] .stage::after {
+  background: var(--muted);
+  transition: transform 400ms var(--ease);
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .stage:not(:disabled):hover {
-    border-bottom-color: var(--ink);
-  }
-  .transport button:not(#play):not(:disabled):hover {
+  .transport button:not(.icon-button):not(:disabled):hover {
     text-decoration: underline;
     text-underline-offset: 0.3em;
   }
-  #play:not(:disabled):hover {
-    background: color-mix(in oklab, var(--ink) 84%, var(--paper));
-  }
-  #play[aria-pressed="true"]:hover {
+  .icon-button:not(.primary):not(:disabled):hover {
     background: color-mix(in oklab, var(--ink) 6%, transparent);
   }
-}
-
-/* Paint again and Download sit at the far end. */
-#again {
-  margin-left: auto;
+  .icon-button.primary:not(:disabled):hover {
+    background: color-mix(in oklab, var(--ink) 84%, var(--paper));
+  }
 }
 
 /* Narrow: the bench unfolds. Picture and transport first, rail beneath. */
@@ -463,6 +479,10 @@ legend,
   .transport {
     flex-wrap: wrap;
     gap: 0.75rem 1.5rem;
+  }
+  .stages {
+    flex-basis: 100%;
+    order: -1;
   }
   .rail {
     border-right: 0;

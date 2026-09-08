@@ -95,9 +95,11 @@ keep around, at a seventh of the memory.
   paints under a per-frame budget and jumps between the brushes' stages from
   copies taken at the handovers, and a planner on its own thread that reports
   each brush as it goes and plans the other photos behind the one playing. The
-  controls offer stages rather than a scrubber on purpose: strokes go down over
-  one another and cannot be lifted, so there is no playing backwards, and the
-  moments worth returning to are where each brush begins.
+  transport is a DVD player's rather than a scrubber on purpose: strokes go down
+  over one another and cannot be lifted, so there is no playing backwards, and
+  the moments worth returning to are where each brush begins. Back, play and on
+  are three drawn glyphs, the same geometry as the carets on the selects; the
+  stages beside them show where the painting has got to.
 - `processing/` holds the 2020 Processing sketches this grew out of, untouched.
 
 TypeScript, Canvas 2D, no framework. `tsup` builds the library to `dist/` and

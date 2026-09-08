@@ -6,7 +6,8 @@
 //
 // The controls promise only what the painting can do. Strokes go down over
 // one another and cannot be lifted, so there is no going backwards a frame at
-// a time; there are stages, one per brush, and a jump to any of them.
+// a time. The transport is a DVD player's: back a brush, play or pause, on a
+// brush. The stages beside the buttons show where the painting has got to.
 import {type BrushName, brushes, createSchedule} from '../paint';
 import {defaultRadii, isStyleName, type StyleName, styles} from '../plan';
 import type {Plan} from '../types';
@@ -26,6 +27,8 @@ const DEFAULT_BRUSH: Record<StyleName, BrushName> = {painting: 'bristle', underp
  * stays under a few seconds.
  */
 const PLAN_SIDE = window.innerWidth < 600 ? 900 : 1400;
+/** How long into a brush the back button still restarts it rather than going back one. */
+const RESTART_MS = 1_500;
 
 const $ = <T extends Element>(selector: string): T => {
   const element = document.querySelector<T>(selector);
@@ -42,7 +45,8 @@ const viewer = $<HTMLElement>('.viewer');
 const canvas = $<HTMLCanvasElement>('#canvas');
 const context = canvas.getContext('2d', {alpha: false}) ?? orFail('no 2d context');
 const playButton = $<HTMLButtonElement>('#play');
-const finishButton = $<HTMLButtonElement>('#finish');
+const backButton = $<HTMLButtonElement>('#back');
+const aheadButton = $<HTMLButtonElement>('#ahead');
 const againButton = $<HTMLButtonElement>('#again');
 const downloadButton = $<HTMLButtonElement>('#download');
 const brushSelect = $<HTMLSelectElement>('#brush');
@@ -61,8 +65,8 @@ type State = {
   brush: BrushName;
 };
 
-/** One brush's stretch of the painting: its button, and where it runs in strokes and time. */
-type Stage = {button: HTMLButtonElement; start: number; from: number; to: number};
+/** One brush's stretch of the painting: its mark on the strip, and where it runs. */
+type Stage = {mark: HTMLElement; start: number; from: number; to: number};
 
 let state: State = readHash();
 const planning = createPlanning();
@@ -127,7 +131,22 @@ playButton.addEventListener('click', () => {
   else player.play();
 });
 
-finishButton.addEventListener('click', () => player?.seek(player.total));
+// Back restarts the brush being painted, or, if it has barely begun, goes to
+// the one before: what pressing back on a DVD player does with a chapter.
+backButton.addEventListener('click', () => {
+  if (!player) return;
+  const here = stages[stageAt(player.state.position)];
+  const justStarted = !here || player.state.elapsed - here.from < RESTART_MS;
+  const target = justStarted ? stages[stageAt(player.state.position) - 1] : here;
+  player.seek(target?.start ?? 0);
+});
+
+// On to the next brush, and from the last one to the finished picture.
+aheadButton.addEventListener('click', () => {
+  if (!player) return;
+  const next = stages[stageAt(player.state.position) + 1];
+  player.seek(next ? next.start : player.total);
+});
 
 againButton.addEventListener('click', () => {
   state = {...state, seed: state.seed + 1};
@@ -171,27 +190,22 @@ downloadButton.addEventListener('click', () => {
 // ---- the stages -------------------------------------------------------------
 
 /**
- * One button per brush, each as wide as the time its brush takes. The widths
- * come from the schedule, which paces by brush count alone, so they are known
- * before the strokes are.
+ * One mark per brush, each as wide as the time its brush takes. The widths come
+ * from the schedule, which paces by brush count alone, so they are known before
+ * the strokes are.
  */
 function buildStages(count: number): void {
   const pacing = createSchedule(standIn(count), DURATION_MS[state.style]);
   stages = [];
   stageStrip.replaceChildren();
   for (let i = 0; i < count; i++) {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'stage';
-    button.setAttribute('aria-label', `Brush ${i + 1} of ${count}`);
-    button.title = `Jump to brush ${i + 1}`;
+    const mark = document.createElement('span');
+    mark.className = 'stage';
     const from = pacing.timeOf(i);
     const to = pacing.timeOf(i + 1);
-    button.style.setProperty('--share', String(to - from));
-    const stage: Stage = {button, start: 0, from, to};
-    button.addEventListener('click', () => player?.seek(stage.start));
-    stages.push(stage);
-    stageStrip.append(button);
+    mark.style.setProperty('--share', String(to - from));
+    stages.push({mark, start: 0, from, to});
+    stageStrip.append(mark);
   }
 }
 
@@ -239,9 +253,10 @@ async function load(): Promise<void> {
   painting = null;
   writeHash();
   playButton.disabled = true;
-  playButton.textContent = 'Play';
+  playButton.setAttribute('aria-label', 'Play');
   playButton.setAttribute('aria-pressed', 'false');
-  finishButton.hidden = true;
+  backButton.disabled = true;
+  aheadButton.disabled = true;
   downloadButton.hidden = true;
   setStatus('Loading the photo…');
   caption.replaceChildren(...captionFor(state.photo));
@@ -283,6 +298,7 @@ async function load(): Promise<void> {
     onChange: render,
   });
   playButton.disabled = false;
+  aheadButton.disabled = false;
   // Exact positions the controls do not offer, for the recorder and the tests.
   window.painterly = {seek: player.seek, total: player.total, layers: painting.layerSizes};
   render(player.state);
@@ -354,32 +370,29 @@ function showGhost(image: HTMLImageElement): void {
 function showPlanning(planned: number, of: number): void {
   viewer.setAttribute('aria-busy', 'true');
   stages.forEach((stage, i) => {
-    stage.button.disabled = true;
     // A sliver on the brush being planned, so the strip is seen to be live.
-    stage.button.style.setProperty('--fill', i < planned ? '1' : i === planned ? '0.04' : '0');
+    stage.mark.style.setProperty('--fill', i < planned ? '1' : i === planned ? '0.04' : '0');
   });
   setStatus(`Planning brush ${Math.min(planned + 1, of)} of ${of}…`);
 }
 
 function hidePlanning(): void {
   viewer.removeAttribute('aria-busy');
-  for (const stage of stages) stage.button.disabled = false;
 }
 
 // ---- what the page says -----------------------------------------------------
 
 function render(view: PlayerState): void {
-  playButton.textContent = view.playing ? 'Pause' : 'Play';
+  playButton.setAttribute('aria-label', view.playing ? 'Pause' : 'Play');
   playButton.setAttribute('aria-pressed', String(view.playing));
-  finishButton.hidden = view.finished;
+  backButton.disabled = view.position === 0;
+  aheadButton.disabled = view.finished;
   downloadButton.hidden = !view.finished;
   const at = stageAt(view.position);
-  stages.forEach((stage, i) => {
+  for (const stage of stages) {
     const filled = (view.elapsed - stage.from) / (stage.to - stage.from);
-    stage.button.style.setProperty('--fill', String(Math.min(1, Math.max(0, filled))));
-    if (i === at) stage.button.setAttribute('aria-current', 'step');
-    else stage.button.removeAttribute('aria-current');
-  });
+    stage.mark.style.setProperty('--fill', String(Math.min(1, Math.max(0, filled))));
+  }
   // Where the player is and where the canvas has got to, for tooling that waits on them.
   stageStrip.dataset.position = String(view.position);
   stageStrip.dataset.painted = String(view.painted);
