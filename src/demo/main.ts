@@ -80,20 +80,6 @@ let player: Player | null = null;
 /** Counts the loads, so a photo swapped mid-load does not paint the old one. */
 let loading = 0;
 
-// ---- the sheet's measure ----------------------------------------------------
-
-/**
- * The page takes the picture's measure. The running head, the caption and the
- * transport are as wide as the plate and centred on it, so a tall photo does
- * not leave the controls stretched across empty ground beside a narrow one.
- */
-new ResizeObserver(([entry]) => {
-  // The framing line stands off the canvas, so the measure is the line's, not the paint's.
-  const drawn = getComputedStyle(canvas);
-  const edge = parseFloat(drawn.outlineOffset) + parseFloat(drawn.outlineWidth);
-  viewer.style.setProperty('--plate', `${entry.contentRect.width + 2 * edge}px`);
-}).observe(canvas);
-
 // ---- photo picker -----------------------------------------------------------
 
 for (const photo of photos) {

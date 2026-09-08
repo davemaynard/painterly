@@ -164,38 +164,27 @@ test('at phone width nothing overflows and the controls are reachable', async ()
   await page.close();
 });
 
-test("the head and the transport take the picture's measure", async () => {
-  // A tall photo leaves ground to either side; the controls must not stretch
-  // across it. Everything but the plate is as wide as the framing line.
+test('the transport stays put when the picture changes shape', async () => {
+  // The rows are the sheet's, not the picture's: a tall photo and a wide one
+  // leave the buttons and Paint again in exactly the same place.
   const page = await open('photo=golden&seed=1', {width: 1440, height: 900});
-  // The measure is taken from the canvas, so it lands a frame after the plate
-  // settles into its final size.
-  await page.waitForFunction(() => {
-    const canvas = document.querySelector('canvas');
-    const style = getComputedStyle(canvas);
-    const off = parseFloat(style.outlineOffset) + parseFloat(style.outlineWidth);
-    const measure = getComputedStyle(document.querySelector('.viewer')).getPropertyValue('--plate');
-    return Math.abs(parseFloat(measure) - (canvas.getBoundingClientRect().width + 2 * off)) < 0.5;
+  const places = async () => ({
+    transport: await page.locator('.transport').boundingBox(),
+    again: await page.getByRole('button', {name: 'Paint again'}).boundingBox(),
+    play: await page.getByRole('button', {name: /Play|Pause/}).boundingBox(),
   });
-  const edges = (selector) =>
-    page.locator(selector).evaluate((el) => {
-      const box = el.getBoundingClientRect();
-      const style = getComputedStyle(el);
-      // The plate's framing line stands off the canvas. Chrome reports a width
-      // for an outline it is not drawing, so the style decides whether to count it.
-      const drawn = style.outlineStyle !== 'none';
-      const off = drawn ? parseFloat(style.outlineOffset) + parseFloat(style.outlineWidth) : 0;
-      return [box.left - off, box.right + off];
-    });
-  const plate = await edges('canvas');
-  for (const selector of ['.runner', '.caption', '.transport']) {
-    const [left, right] = await edges(selector);
-    assert.ok(Math.abs(left - plate[0]) < 1, `${selector} starts at ${left}, plate at ${plate[0]}`);
-    assert.ok(Math.abs(right - plate[1]) < 1, `${selector} ends at ${right}, plate at ${plate[1]}`);
-  }
-  const viewer = await page.locator('.viewer').boundingBox();
-  const width = plate[1] - plate[0];
-  assert.ok(width < viewer.width * 0.75, `the picture is ${width}px of a ${viewer.width}px viewer`);
+  const tall = await places();
+  const tallPlate = await page.locator('canvas').boundingBox();
+
+  await page.getByRole('radio', {name: /Oranges/}).check();
+  await page.getByRole('button', {name: 'Pause'}).waitFor({timeout: 60_000});
+  await page.getByRole('button', {name: 'Pause'}).click();
+  const widePlate = await page.locator('canvas').boundingBox();
+  assert.ok(
+    widePlate.width - tallPlate.width > 100,
+    `the two photos are ${tallPlate.width}px and ${widePlate.width}px wide`,
+  );
+  assert.deepEqual(await places(), tall);
   await page.close();
 });
 

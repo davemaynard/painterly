@@ -278,15 +278,6 @@ legend,
   padding: 0 2rem;
 }
 
-/* Everything but the plate takes the plate's width, which the page measures off
-   the canvas into `--plate`. One column down the left edge, whatever shape the
-   photo is: the rules start where the plate's framing line does and end with it. */
-.runner,
-.caption,
-.transport {
-  width: min(100%, var(--plate, 100%));
-}
-
 .runner {
   display: flex;
   gap: 1rem;
