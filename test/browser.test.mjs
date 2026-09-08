@@ -161,6 +161,42 @@ test('at phone width nothing overflows and the controls are reachable', async ()
     assert.ok(await page.getByRole('button', {name}).isVisible(), `${name} is visible`);
   }
   assert.ok(await page.getByRole('radio', {name: /golden retriever/}).isChecked());
+  // The commentary is the only thing that explains what the page is doing, and a
+  // phone is where it was silently hidden.
+  assert.ok(
+    await page.getByText(/Brush \d+ of \d+/).isVisible(),
+    'the status readout is hidden at phone width',
+  );
+  await page.close();
+});
+
+test('a photo dropped on the picture is the one that gets painted', async () => {
+  // The README offers a drop, so there is one. Dragging over answers first, then
+  // the drop replaces the subject and no supplied photo stays chosen.
+  const page = await open('photo=golden&seed=1');
+  const dropped = await page.evaluate(async () => {
+    const viewer = document.querySelector('.viewer');
+    const carry = (type, dataTransfer) =>
+      viewer.dispatchEvent(new DragEvent(type, {dataTransfer, bubbles: true, cancelable: true}));
+
+    const holding = new DataTransfer();
+    holding.items.add(new File([new Blob()], 'held.jpg', {type: 'image/jpeg'}));
+    carry('dragover', holding);
+    const answered = viewer.hasAttribute('data-dropping');
+
+    const blob = await (await fetch('photos/oranges.jpg')).blob();
+    const carrying = new DataTransfer();
+    carrying.items.add(new File([blob], 'dropped.jpg', {type: 'image/jpeg'}));
+    carry('drop', carrying);
+    return {answered, stillDressed: viewer.hasAttribute('data-dropping')};
+  });
+  assert.equal(dropped.answered, true, 'the page did not answer a photo held over it');
+  assert.equal(dropped.stillDressed, false, 'the drop state outlived the drop');
+
+  await page.getByRole('button', {name: 'Pause'}).waitFor({timeout: 60_000});
+  const chosen = await page.locator('#photos input[type="radio"]:checked').count();
+  assert.equal(chosen, 0, 'a supplied photo is still selected after a drop');
+  assert.ok((await strokeCount(page)) > 1000, 'the dropped photo was not painted');
   await page.close();
 });
 
@@ -198,7 +234,7 @@ test('the strip hands over from planning to painting without a flash', async () 
     const tick = () => {
       const stages = [...document.querySelectorAll('#stages .stage')];
       window.film.push({
-        busy: document.querySelector('.viewer').getAttribute('aria-busy') === 'true',
+        busy: document.querySelector('figure').getAttribute('aria-busy') === 'true',
         ink: stages.reduce(
           (sum, s) => sum + (+getComputedStyle(s).getPropertyValue('--fill') || 0),
           0,
@@ -263,7 +299,7 @@ test('the transport is disabled where it would do nothing', async () => {
   assert.ok(await page.getByRole('button', {name: 'Next brush'}).isDisabled());
   // While a new photo is planned, nothing on the transport works.
   await page.getByRole('radio', {name: /oranges/i}).check();
-  await page.locator('section[aria-busy="true"]').waitFor({timeout: 5_000});
+  await page.locator('figure[aria-busy="true"]').waitFor({timeout: 5_000});
   for (const name of ['Previous brush', 'Play', 'Next brush']) {
     assert.ok(
       await page.getByRole('button', {name}).isDisabled(),
@@ -372,7 +408,7 @@ test('once the copies are made, going back to an earlier brush is a restore', as
 
 test('while a photo is planned the picture shows the photo, the stages fill, then it paints', async () => {
   const page = await open('photo=mist&seed=1');
-  const viewer = page.locator('section[aria-busy="true"]');
+  const viewer = page.locator('figure[aria-busy="true"]');
   await page.getByRole('radio', {name: /oranges/i}).check();
   await viewer.waitFor({timeout: 5_000});
   // The canvas is neither the old painting nor black: the photo, faint and grey.

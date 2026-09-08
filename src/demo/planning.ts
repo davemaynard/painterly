@@ -28,7 +28,6 @@ export type Planning = {
   plan(job: PlanJob, onLayer?: OnLayer): Promise<Plan>;
   /** Plan these when nothing else is asked for, and keep the results. */
   preload(jobs: PlanJob[]): void;
-  dispose(): void;
 };
 
 type Listener = {
@@ -144,13 +143,6 @@ export function createPlanning(script = 'planner.js', keep = KEEP): Planning {
         queue.push({id: ++ids, job, listeners: []});
       }
       next();
-    },
-
-    dispose() {
-      worker.terminate();
-      shelf.clear();
-      queue.length = 0;
-      active = null;
     },
   };
 }

@@ -11,7 +11,9 @@ export default defineConfig([
     clean: true,
     target: 'es2022',
     // The Mersenne Twister core ships inside dist, so the package has no runtime dependencies.
+    // Inlining strips its header, so the bundle points at the notice that replaces it.
     noExternal: ['mersenne-twister'],
+    banner: {js: '/* painterly bundles mersenne-twister, BSD-3-Clause \u2014 see NOTICE */'},
   },
   {
     // The demo page's script and its planning worker, built straight into
@@ -23,6 +25,7 @@ export default defineConfig([
     minify: true,
     target: 'es2022',
     noExternal: ['mersenne-twister'],
+    banner: {js: '/* painterly bundles mersenne-twister, BSD-3-Clause \u2014 see NOTICE */'},
     outExtension: () => ({js: '.js'}),
   },
 ]);

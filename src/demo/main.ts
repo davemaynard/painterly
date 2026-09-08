@@ -24,9 +24,11 @@ const DURATION_MS: Record<StyleName, number> = {painting: 45_000, underpainting:
 const DEFAULT_BRUSH: Record<StyleName, BrushName> = {painting: 'bristle', underpainting: 'ribbon'};
 /**
  * Longest side the photo is planned at. Phones get a smaller canvas so planning
- * stays under a few seconds.
+ * stays under a few seconds. `NARROW_PX` is the 55rem the stylesheet unfolds the
+ * bench at, so the two agree on which screens are phones.
  */
-const PLAN_SIDE = window.innerWidth < 600 ? 900 : 1400;
+const NARROW_PX = 880;
+const PLAN_SIDE = window.innerWidth < NARROW_PX ? 900 : 1400;
 /** How long into a brush the back button still restarts it rather than going back one. */
 const RESTART_MS = 1_500;
 
@@ -42,6 +44,7 @@ const orFail = (message: string): never => {
 };
 
 const viewer = $<HTMLElement>('.viewer');
+const frame = $<HTMLElement>('.frame');
 const canvas = $<HTMLCanvasElement>('#canvas');
 const context = canvas.getContext('2d', {alpha: false}) ?? orFail('no 2d context');
 const playButton = $<HTMLButtonElement>('#play');
@@ -103,13 +106,12 @@ for (const photo of photos) {
   input.addEventListener('change', () => {
     if (!input.checked) return;
     state = {...state, photo, seed: 1};
-    void load();
+    start();
   });
 }
 
-fileInput.addEventListener('change', () => {
-  const file = fileInput.files?.[0];
-  if (!file) return;
+/** Paint a photo of the visitor's own, however it arrived: picked, or dropped on the picture. */
+function useOwnPhoto(file: File): void {
   for (const input of photoList.querySelectorAll<HTMLInputElement>('input[type="radio"]')) {
     input.checked = false;
   }
@@ -120,7 +122,33 @@ fileInput.addEventListener('change', () => {
     photo: {id: 'own', file: URL.createObjectURL(file), caption: file.name, credit: null},
     seed: 1,
   };
-  void load();
+  start();
+}
+
+fileInput.addEventListener('change', () => {
+  const file = fileInput.files?.[0];
+  if (file) useOwnPhoto(file);
+});
+
+// Dropping a photo on the picture is the shortest way in, so the picture takes one.
+viewer.addEventListener('dragover', (event) => {
+  if (!event.dataTransfer?.types.includes('Files')) return;
+  event.preventDefault();
+  event.dataTransfer.dropEffect = 'copy';
+  viewer.setAttribute('data-dropping', '');
+});
+
+// Moving over a child fires dragleave too, so only a leave that lands outside counts.
+viewer.addEventListener('dragleave', (event) => {
+  if (!viewer.contains(event.relatedTarget as Node | null)) viewer.removeAttribute('data-dropping');
+});
+
+viewer.addEventListener('drop', (event) => {
+  viewer.removeAttribute('data-dropping');
+  const file = event.dataTransfer?.files?.[0];
+  if (!file?.type.startsWith('image/')) return;
+  event.preventDefault();
+  useOwnPhoto(file);
 });
 
 // ---- controls ---------------------------------------------------------------
@@ -150,7 +178,7 @@ aheadButton.addEventListener('click', () => {
 
 againButton.addEventListener('click', () => {
   state = {...state, seed: state.seed + 1};
-  void load();
+  start();
 });
 
 styleSelect.value = state.style;
@@ -159,7 +187,7 @@ styleSelect.addEventListener('change', () => {
   if (!isStyleName(style)) return;
   state = {...state, style, brush: DEFAULT_BRUSH[style]};
   brushSelect.value = state.brush;
-  void load();
+  start();
 });
 
 brushSelect.value = state.brush;
@@ -261,6 +289,18 @@ function stageAt(position: number): number {
 
 // ---- loading and planning ---------------------------------------------------
 
+/**
+ * Load and play, and say so if the photo cannot be read at all — a HEIC, a
+ * renamed PDF, something far too big. Every entry point goes through here, so
+ * nothing is left waiting on a status line that will never change.
+ */
+function start(): void {
+  load().catch(() => {
+    render(null);
+    setStatus('That photo could not be read. Try another one.');
+  });
+}
+
 async function load(): Promise<void> {
   const token = ++loading;
   player?.destroy();
@@ -270,6 +310,7 @@ async function load(): Promise<void> {
   render(null);
   setStatus('Loading the photo…');
   caption.replaceChildren(...captionFor(state.photo));
+  canvas.setAttribute('aria-label', `The painting: ${state.photo.caption}`);
 
   const image = await loadImage(state.photo.file);
   if (token !== loading) return;
@@ -307,8 +348,12 @@ async function load(): Promise<void> {
     duration: DURATION_MS[state.style],
     onChange: render,
   });
-  // Exact positions the controls do not offer, for the recorder and the tests.
-  window.painterly = {seek: player.seek, total: player.total, layers: painting.layerSizes};
+  window.painterly = {
+    seek: player.seek,
+    total: player.total,
+    duration: player.duration,
+    layers: painting.layerSizes,
+  };
   render(player.state);
   // Autoplay is the point of the page, unless the visitor has asked for less motion.
   if (matchMedia('(prefers-reduced-motion: reduce)').matches) setStatus('Ready. Press play.');
@@ -376,7 +421,7 @@ function showGhost(image: HTMLImageElement): void {
 
 /** The rule under each brush darkens as its strokes are planned, and the words keep count. */
 function showPlanning(planned: number, of: number): void {
-  viewer.setAttribute('aria-busy', 'true');
+  frame.setAttribute('aria-busy', 'true');
   stages.forEach((stage, i) => {
     stage.mark.toggleAttribute('data-planned', i < planned);
     stage.mark.toggleAttribute('data-planning', i === planned);
@@ -386,7 +431,7 @@ function showPlanning(planned: number, of: number): void {
 
 /** Planned, all of it. The rule stays where planning left it and the ink fills over it. */
 function hidePlanning(): void {
-  viewer.removeAttribute('aria-busy');
+  frame.removeAttribute('aria-busy');
   for (const {mark} of stages) {
     mark.toggleAttribute('data-planned', true);
     mark.removeAttribute('data-planning');
@@ -403,9 +448,9 @@ function hidePlanning(): void {
 function render(view: PlayerState | null): void {
   playButton.disabled = !view;
   playButton.setAttribute('aria-label', view?.playing ? 'Pause' : 'Play');
-  playButton.setAttribute('aria-pressed', String(view?.playing ?? false));
-  backButton.disabled = !view || view.position === 0;
-  aheadButton.disabled = !view || view.finished;
+  playButton.toggleAttribute('data-playing', Boolean(view?.playing));
+  setDisabled(backButton, !view || view.position === 0);
+  setDisabled(aheadButton, !view || view.finished);
   downloadButton.hidden = !view?.finished;
   // The stages and the words belong to whatever is loading until it hands over.
   if (!view) return;
@@ -420,6 +465,16 @@ function render(view: PlayerState | null): void {
   setStatus(view.finished ? finishedText() : `Brush ${at + 1} of ${stages.length}`);
 }
 
+/**
+ * Disabling the button under the visitor's finger would drop focus to the
+ * document, so hand it to Play first — the one control that stays alive for as
+ * long as there is anything to play.
+ */
+function setDisabled(button: HTMLButtonElement, off: boolean): void {
+  if (off && document.activeElement === button && !playButton.disabled) playButton.focus();
+  button.disabled = off;
+}
+
 /** The one number worth keeping, shown once the picture is finished. */
 function finishedText(): string {
   if (!painting) return '';
@@ -428,6 +483,8 @@ function finishedText(): string {
 }
 
 function setStatus(text: string): void {
+  // render() runs every frame; a live region rewritten at that rate is never read out.
+  if (status.textContent === text) return;
   status.textContent = text;
 }
 
@@ -458,7 +515,10 @@ async function loadImage(src: string): Promise<HTMLImageElement> {
 function readHash(): State {
   const params = new URLSearchParams(location.hash.slice(1));
   const photo = photos.find((p) => p.id === params.get('photo')) ?? (photos[0] as Photo);
-  const seed = Number(params.get('seed')) || 1;
+  // The planner truncates the seed, so #seed=1.5 and #seed=1 would otherwise be
+  // two URLs for one painting. Whole numbers only, and never zero.
+  const asked = Math.trunc(Number(params.get('seed')));
+  const seed = Number.isFinite(asked) && asked > 0 ? asked : 1;
   const style = params.get('style');
   const brush = params.get('brush');
   const chosenStyle: StyleName = isStyleName(style) ? style : 'painting';
@@ -484,8 +544,13 @@ function writeHash(): void {
 declare global {
   interface Window {
     /** Exact positions the controls do not offer, for the recorder and the tests. */
-    painterly?: {seek(count: number): void; total: number; layers: number[]};
+    painterly?: {
+      seek(count: number): void;
+      total: number;
+      duration: number;
+      layers: number[];
+    };
   }
 }
 
-void load();
+start();

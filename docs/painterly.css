@@ -108,8 +108,6 @@ legend,
   color: var(--muted);
   padding: 0;
   margin: 0 0 1rem;
-  float: left;
-  width: 100%;
 }
 
 /* Subjects: a list of rows, the way a tool lists what it is pointed at. */
@@ -280,7 +278,6 @@ legend,
 
 .runner {
   display: flex;
-  gap: 1rem;
   padding: 1.5rem 0;
   border-bottom: 1px solid var(--line);
   font-size: 0.75rem;
@@ -315,6 +312,12 @@ legend,
   height: auto;
   outline: 1px solid var(--line);
   outline-offset: 0.75rem;
+}
+
+/* A photo held over the page: the framing line comes forward to take it. */
+.viewer[data-dropping] .frame canvas {
+  outline-color: var(--ink);
+  outline-width: 2px;
 }
 
 .caption {
@@ -389,13 +392,15 @@ legend,
 }
 
 /* One glyph at a time. These have to out-rank `.icon-button svg` above, which
-   is why they name the button as well as the glyph. */
+   is why they name the button as well as the glyph. The button's *name* swaps
+   between Play and Pause, which is what a screen reader reads; `data-playing`
+   is only how the drawing keeps up. */
 .icon-button .glyph-pause,
-#play[aria-pressed="true"] .glyph-play {
+#play[data-playing] .glyph-play {
   display: none;
 }
 
-#play[aria-pressed="true"] .glyph-pause {
+#play[data-playing] .glyph-pause {
   display: block;
 }
 
@@ -483,8 +488,9 @@ legend,
     order: -1;
     padding: 0 1.25rem;
   }
-  .runner span:first-child {
-    display: none;
+  /* Tighter, because the readout now stays: the transport still clears the fold. */
+  .runner {
+    padding: 1rem 0;
   }
   .frame {
     padding: 1.5rem 0;

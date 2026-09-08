@@ -18,6 +18,8 @@ export type Brush = {
   drift: number;
   /** Draw a dot at each point instead of a line through them. */
   dots: boolean;
+  // `spread` has no effect at one bristle, and `ragged` none when `dots` is set:
+  // a dot has no path to come in short of.
   /**
    * How much of the path each bristle may skip at either end, 0..0.5. Real
    * bristles do not all touch down and lift at the same moment; this ragged

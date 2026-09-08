@@ -20,7 +20,8 @@ export type Painter = {
   resume(snapshot: CanvasImageSource, count: number): void;
 };
 
-type Context2D = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
+/** Either canvas context the painter can draw on: on screen, or off it. */
+export type Context2D = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
 
 export function createPainter(context: Context2D, painting: Plan, brush: Brush): Painter {
   let painted = 0;

@@ -6,8 +6,30 @@
 // that is where the likeness arrives and the eye wants to slow down.
 import type {Plan} from '../types';
 
-/** Share of the total duration each layer gets, coarsest first. Renormalised to the plan's layer count. */
+/**
+ * Share of the total duration each layer gets, coarsest first, renormalised to
+ * the plan's own layer count. The table is the five-brush default; `sharesFor`
+ * stretches it to whatever `radii` the caller actually passed to plan().
+ */
 const LAYER_SHARES = [0.08, 0.12, 0.18, 0.27, 0.35];
+/** Roughly the ratio the table already runs at, used to extend its coarse end. */
+const COARSER = 1.5;
+
+/**
+ * Fewer brushes than the table take its *tail*, because the last brush is
+ * always the one the eye is given the most time on: a one-brush underpainting
+ * is the finest share, and so the whole duration. More brushes extend the
+ * coarse end, each a step quicker than the one after it, so a caller who asks
+ * for six radii gets six paced layers instead of a sixth that lands in a
+ * single frame at the very end.
+ */
+function sharesFor(count: number): number[] {
+  if (count <= 0) return [];
+  if (count <= LAYER_SHARES.length) return LAYER_SHARES.slice(-count);
+  const shares = [...LAYER_SHARES];
+  while (shares.length < count) shares.unshift((shares[0] as number) / COARSER);
+  return shares;
+}
 
 export type Schedule = {
   /** Total playing time in milliseconds. */
@@ -20,14 +42,14 @@ export type Schedule = {
 
 export function createSchedule(painting: Plan, duration: number): Schedule {
   const layers = painting.layerSizes.filter((size) => size > 0);
-  const shares = LAYER_SHARES.slice(-layers.length);
+  const shares = sharesFor(layers.length);
   const shareTotal = shares.reduce((a, b) => a + b, 0) || 1;
   // Each layer as [startTime, endTime, startStroke, endStroke].
   const spans: [number, number, number, number][] = [];
   let time = 0;
   let stroke = 0;
   layers.forEach((size, i) => {
-    const length = ((shares[i] ?? 0) / shareTotal) * duration;
+    const length = ((shares[i] as number) / shareTotal) * duration;
     spans.push([time, time + length, stroke, stroke + size]);
     time += length;
     stroke += size;

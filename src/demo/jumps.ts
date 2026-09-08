@@ -19,8 +19,7 @@ export function copyMarks(layerSizes: number[]): number[] {
  * Where a seek to `target` should start painting from, given the playhead and
  * the nearest copy at or before the target.
  *
- * Two questions that are easy to confuse, and confusing them is a bug: whether
- * the canvas has to be thrown away depends on the direction, but where the
+ * Whether the canvas has to be thrown away depends on the direction; where the
  * cheapest start lies does not. Jumping forward across a copy costs exactly as
  * much as jumping back behind one, because both repaint every stroke between.
  */

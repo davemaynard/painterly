@@ -24,6 +24,7 @@ export {
   type Brush,
   type BrushName,
   brushes,
+  type Context2D,
   createPainter,
   createSchedule,
   type Painter,

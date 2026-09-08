@@ -14,7 +14,7 @@
 // Requires ffmpeg on PATH. Run `npm run build` first, then `npm run gif`.
 
 import {spawn} from 'node:child_process';
-import {mkdtemp, rm} from 'node:fs/promises';
+import {copyFile, mkdtemp, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {dirname, join} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -26,8 +26,6 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const OUTPUT = join(root, 'docs/demo.gif');
 
 const PHOTO = process.env.PHOTO ?? 'golden';
-/** How long the page itself takes; must match DURATION_MS in src/demo/main.ts. */
-const PAGE_SECONDS = 45;
 const FPS = 20;
 const PAINT_SECONDS = 6;
 const HOLD_SECONDS = 1.5;
@@ -56,17 +54,18 @@ try {
   // The page's own pacing: rebuild its schedule from the layer sizes it
   // publishes for tooling, then compress 45 s into the clip with a curve that
   // keeps the underpainting on screen long enough to read.
-  const {total, layerSizes} = await page.evaluate(() => ({
-    total: window.painterly.total,
+  const {duration, layerSizes} = await page.evaluate(() => ({
+    duration: window.painterly.duration,
     layerSizes: window.painterly.layers,
   }));
-  const schedule = createSchedule({layerSizes, strokes: {length: total}}, PAGE_SECONDS * 1000);
+  // createSchedule paces from the layer sizes alone, so the strokes are not needed here.
+  const schedule = createSchedule({layerSizes, strokes: []}, duration);
   const paintFrames = PAINT_SECONDS * FPS;
   const holdFrames = HOLD_SECONDS * FPS;
   let frame = 0;
   for (let i = 0; i <= paintFrames; i++) {
     const t = i / paintFrames;
-    const count = schedule.strokesAt(PAGE_SECONDS * 1000 * t ** 1.6);
+    const count = schedule.strokesAt(duration * t ** 1.6);
     // The controls offer stages, not strokes; the page keeps an exact seek for
     // tooling. The canvas catches up over frames rather than in one block.
     await page.evaluate((value) => {
@@ -82,10 +81,10 @@ try {
   }
   const last = frame - 1;
   for (let i = 0; i < holdFrames; i++) {
-    await run('cp', [
+    await copyFile(
       join(frames, `f${String(last).padStart(4, '0')}.png`),
       join(frames, `f${String(frame++).padStart(4, '0')}.png`),
-    ]);
+    );
   }
 
   const palette = join(frames, 'palette.png');

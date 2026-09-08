@@ -11,9 +11,18 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=Instrument+Serif:ital@0;1&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500&family=Instrument+Serif&display=swap"
       rel="stylesheet"
     />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="painterly" />
+    <meta
+      property="og:description"
+      content="Watch a photo get painted: brush strokes of several sizes that follow the image and converge on it."
+    />
+    <meta property="og:image" content="https://davemaynard.github.io/painterly/still.jpg" />
+    <meta property="og:url" content="https://davemaynard.github.io/painterly/" />
+    <meta name="twitter:card" content="summary_large_image" />
     <link rel="stylesheet" href="painterly.css" />
     <link rel="icon" href="favicon-32.png" sizes="32x32" type="image/png" />
     <link rel="icon" href="favicon-16.png" sizes="16x16" type="image/png" />
@@ -80,8 +89,9 @@
           <span id="status" class="readout" role="status" aria-live="polite">Loading…</span>
         </header>
 
-        <figure class="frame" aria-label="The painting">
-          <canvas id="canvas" width="1400" height="933"></canvas>
+        <figure class="frame">
+          <!-- width/height reserve the row before load() sizes it to the photo. -->
+          <canvas id="canvas" width="1400" height="933" role="img" aria-label="The painting"></canvas>
         </figure>
         <p id="caption" class="caption"></p>
 
@@ -98,7 +108,6 @@
               id="play"
               type="button"
               class="icon-button primary"
-              aria-pressed="false"
               aria-label="Play"
               disabled
             >

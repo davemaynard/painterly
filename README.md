@@ -8,13 +8,17 @@ while you watch.
 **Live:** [davemaynard.github.io/painterly](https://davemaynard.github.io/painterly/)
 
 <p align="center">
-  <img src="docs/demo.gif" width="540" alt="A photo of a golden retriever on a wet sidewalk being painted: a big brush blocks in the shapes in a few seconds, then finer brushes bring the fur, the eye and the street behind her into focus">
+  <img src="docs/still.jpg" alt="Side by side: a photograph of a golden retriever sitting on a wet Atlanta sidewalk, and the same picture painted in visible brush strokes 45 seconds later">
+</p>
+
+<p align="center">
+  <img src="docs/demo.gif" width="500" alt="The same photo being painted: a big brush blocks in the shapes in a few seconds, then finer brushes bring the fur, the eye and the street behind her into focus">
 </p>
 
 A big brush lays in the underpainting. Finer brushes come back only where the
 picture still disagrees with the photo. Every stroke runs along the image
 instead of across it, so brushwork follows fur, edges and the line of a roof.
-It finishes in 45 seconds at any size, then stops.
+It finishes in 45 seconds at any size — 20 for the underpainting — then stops.
 
 ## What it does
 
@@ -36,17 +40,23 @@ It finishes in 45 seconds at any size, then stops.
   the abstraction: a few hundred ribbons of colour that are unmistakably the
   photo and nothing like it. It was meant as a stage on the way to a painting
   and turned out to be the picture people liked.
-- **Your own photo.** Drop in a file. It is painted in the tab and never
-  uploaded anywhere.
+- **Your own photo.** Drop one on the picture, or pick a file. It is painted in
+  the tab and never uploaded anywhere.
+- **On a phone too.** The bench unfolds, the photo is planned smaller so the
+  wait stays a couple of seconds, and the transport still clears the fold.
 
 ## Numbers
 
+Run `npm run size` to regenerate the first two.
+
 | | |
 |---|---|
-| Library, gzipped | **6.4 KB** |
-| Whole demo page script, gzipped | **6.7 KB** |
+| Library, gzipped | **7.4 KB** |
+| Demo page script and its worker, gzipped | **11.0 KB** |
 | Runtime dependencies | **0** (a Mersenne Twister is bundled, see `NOTICE`) |
-| Planning a 1050 × 1400 photo | **~1.4 s** on an M4 Mac mini, ~106,000 strokes |
+| Planning a 1050 × 1400 photo | **~1.5 s** on an M4 Mac mini, ~108,000 strokes |
+| A plan crossing back from the worker | **15 MB** packed into typed arrays, not 110 MB of objects |
+| Longest frame CI will accept | **60 ms** painting, **100 ms** skipping to the end |
 
 ## Use it as a library
 
@@ -58,6 +68,8 @@ npm install github:davemaynard/painterly
 import {brushes, createPainter, plan, rasterFromImageData} from 'painterly';
 
 const context = canvas.getContext('2d');
+if (!context) throw new Error('no 2d context');
+
 context.drawImage(photo, 0, 0, canvas.width, canvas.height);
 const source = rasterFromImageData(context.getImageData(0, 0, canvas.width, canvas.height));
 
@@ -115,6 +127,8 @@ npm test         # the planner on synthetic images in Node, then the page in Chr
                  # determinism across loads, scrub-back equals paint-forward, phone width
 npm run build
 npm run gif      # re-record docs/demo.gif from the page (needs ffmpeg)
+npm run still    # re-shoot docs/still.jpg, the photo-and-painting pair above
+npm run size     # re-measure the Numbers table
 ```
 
 ## Photos
@@ -125,6 +139,11 @@ The dog is mine. The others are from Unsplash, free to use under the
 [Cristina Anne Costello](https://unsplash.com/photos/7Jbx0dZyJkw),
 [Pietro De Grandi](https://unsplash.com/photos/T7K4aEPoGGk). All are shipped
 resized with their metadata stripped.
+
+## Who made it
+
+[Dave Maynard](https://davemaynard.dev), a front-end engineer in Atlanta.
+The dog is mine; everything else is credited below.
 
 ## License
 

@@ -40,11 +40,14 @@
   ],
   "scripts": {
     "build": "tsup",
+    "prepare": "tsup",
     "check": "biome check . && tsc",
     "format": "biome format --write .",
     "pretest": "tsup",
     "test": "node --test \"test/*.test.mjs\"",
-    "gif": "node scripts/record-demo.mjs"
+    "gif": "node scripts/record-demo.mjs",
+    "still": "node scripts/record-still.mjs",
+    "size": "node scripts/report-size.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.11",
@@ -55,6 +58,6 @@
     "typescript": "^5.9.3"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22.18"
   }
 }

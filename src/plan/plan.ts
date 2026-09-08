@@ -1,7 +1,9 @@
 // The painter's decisions, as pure data. Given a photo, produce every stroke in
 // painting order: biggest brush first as an underpainting, then finer brushes
-// wherever the picture still disagrees with the photo. This is Hertzmann's
-// layered algorithm (SIGGRAPH 1998) with three habits kept from the 2020
+// wherever the picture still disagrees with the photo. This is a port of Aaron
+// Hertzmann's "Painterly Rendering with Curved Brush Strokes of Multiple Sizes"
+// (SIGGRAPH 1998), https://www.mrl.nyu.edu/publications/painterly98/, with
+// three habits kept from the 2020
 // Processing sketches: the canvas is primed with the photo's dominant colour,
 // stroke order within a layer is shuffled so the hand looks human, and the
 // randomness is seeded so the same photo paints the same way every time.
@@ -125,14 +127,14 @@ export function plan(source: Raster, options: PlanOptions = {}): Plan {
 
     // Shuffle first, then draw each stroke's jitter, so the brush's own
     // randomness follows painting order and the whole plan stays reproducible.
+    // One at a time rather than push(...layerStrokes): a fine grid holds more
+    // strokes than an argument list has room for.
     random.shuffle(layerStrokes);
     for (const stroke of layerStrokes) {
       stroke.jitter = Math.floor(random.next() * 0x100000000);
       stampStroke(canvas, stroke.points, radius, stroke.color);
+      strokes.push(stroke);
     }
-    // Not push(...layerStrokes): a fine grid can hold more strokes than the
-    // call stack has room for arguments.
-    for (const stroke of layerStrokes) strokes.push(stroke);
     layerSizes.push(layerStrokes.length);
     onLayer?.(layer + 1, radii.length);
   });
