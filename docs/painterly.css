@@ -278,6 +278,15 @@ legend,
   padding: 0 2rem;
 }
 
+/* Everything but the plate takes the plate's width, which the page measures off
+   the canvas into `--plate`. One column, whatever shape the photo is. */
+.runner,
+.caption,
+.transport {
+  width: min(100%, var(--plate, 100%));
+  margin-inline: auto;
+}
+
 .runner {
   display: flex;
   gap: 1rem;
@@ -302,6 +311,7 @@ legend,
   min-height: 0;
   display: flex;
   align-items: center;
+  justify-content: center;
   padding: 1.75rem 0.75rem;
 }
 
@@ -316,7 +326,7 @@ legend,
 }
 
 .caption {
-  margin: 0;
+  margin: 0 auto;
   font-size: 0.8125rem;
   color: var(--muted);
   min-height: 1.2em;
@@ -325,7 +335,7 @@ legend,
 .transport {
   border: 0;
   border-top: 1px solid var(--line);
-  margin: 1rem 0 0;
+  margin: 1rem auto 0;
   padding: 0.875rem 0 1.5rem;
   display: flex;
   align-items: center;

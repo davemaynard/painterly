@@ -164,6 +164,41 @@ test('at phone width nothing overflows and the controls are reachable', async ()
   await page.close();
 });
 
+test("the head and the transport take the picture's measure", async () => {
+  // A tall photo leaves ground to either side; the controls must not stretch
+  // across it. Everything but the plate is as wide as the framing line.
+  const page = await open('photo=golden&seed=1', {width: 1440, height: 900});
+  // The measure is taken from the canvas, so it lands a frame after the plate
+  // settles into its final size.
+  await page.waitForFunction(() => {
+    const canvas = document.querySelector('canvas');
+    const style = getComputedStyle(canvas);
+    const off = parseFloat(style.outlineOffset) + parseFloat(style.outlineWidth);
+    const measure = getComputedStyle(document.querySelector('.viewer')).getPropertyValue('--plate');
+    return Math.abs(parseFloat(measure) - (canvas.getBoundingClientRect().width + 2 * off)) < 0.5;
+  });
+  const edges = (selector) =>
+    page.locator(selector).evaluate((el) => {
+      const box = el.getBoundingClientRect();
+      const style = getComputedStyle(el);
+      // The plate's framing line stands off the canvas. Chrome reports a width
+      // for an outline it is not drawing, so the style decides whether to count it.
+      const drawn = style.outlineStyle !== 'none';
+      const off = drawn ? parseFloat(style.outlineOffset) + parseFloat(style.outlineWidth) : 0;
+      return [box.left - off, box.right + off];
+    });
+  const plate = await edges('canvas');
+  for (const selector of ['.runner', '.caption', '.transport']) {
+    const [left, right] = await edges(selector);
+    assert.ok(Math.abs(left - plate[0]) < 1, `${selector} starts at ${left}, plate at ${plate[0]}`);
+    assert.ok(Math.abs(right - plate[1]) < 1, `${selector} ends at ${right}, plate at ${plate[1]}`);
+  }
+  const viewer = await page.locator('.viewer').boundingBox();
+  const width = plate[1] - plate[0];
+  assert.ok(width < viewer.width * 0.75, `the picture is ${width}px of a ${viewer.width}px viewer`);
+  await page.close();
+});
+
 test('the stages are shown, not operated: nothing on the strip is a control', async () => {
   const page = await open('photo=mist&seed=1');
   assert.equal(await stageCount(page), 5);
