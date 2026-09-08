@@ -400,9 +400,11 @@ legend,
 }
 
 /* The stages: the rule beside the buttons, cut where each brush hands over to
-   the next and as wide as the time that brush takes. The played part fills in
-   ink; while the planner works the same rule fills in the quieter ink, brush
-   by brush. It shows where the painting is; the buttons move it. */
+   the next and as wide as the time that brush takes. It carries two things at
+   once, in two channels that never fight: the rule's *colour* says which
+   brushes are planned, and the ink line growing along it says how much is
+   painted. So the end of planning changes nothing that has to be unwound —
+   the grey rule stays, and the ink fills over it. */
 
 .stages {
   flex: 1;
@@ -417,6 +419,23 @@ legend,
   position: relative;
   height: 0;
   border-bottom: 1px solid var(--line);
+  transition: border-color 300ms var(--ease);
+}
+
+/* Planned: the paper's line becomes the quieter ink, and stays. */
+.stage[data-planned] {
+  border-bottom-color: var(--muted);
+}
+
+/* The brush being planned breathes, so a slow plan is seen to be working. */
+.stage[data-planning] {
+  animation: planning 1400ms var(--ease) infinite;
+}
+
+@keyframes planning {
+  50% {
+    border-bottom-color: var(--muted);
+  }
 }
 
 /* A tick where one brush hands over to the next. */
@@ -438,11 +457,6 @@ legend,
   background: var(--ink);
   transform: scaleX(var(--fill, 0));
   transform-origin: left;
-}
-
-.viewer[aria-busy="true"] .stage::after {
-  background: var(--muted);
-  transition: transform 400ms var(--ease);
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -497,6 +511,10 @@ legend,
 @media (prefers-reduced-motion: reduce) {
   .transport button:active:not(:disabled) {
     transform: none;
+  }
+  .stage[data-planning] {
+    animation: none;
+    border-bottom-color: color-mix(in oklab, var(--muted) 50%, var(--line));
   }
 }
 

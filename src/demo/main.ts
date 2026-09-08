@@ -195,6 +195,12 @@ downloadButton.addEventListener('click', () => {
  * the strokes are.
  */
 function buildStages(count: number): void {
+  // The widths depend on the brush count alone, so the same count keeps the
+  // same marks: switching photos must not blank the strip and draw it again.
+  if (stages.length === count) {
+    resetStages();
+    return;
+  }
   const pacing = createSchedule(standIn(count), DURATION_MS[state.style]);
   stages = [];
   stageStrip.replaceChildren();
@@ -206,6 +212,15 @@ function buildStages(count: number): void {
     mark.style.setProperty('--share', String(to - from));
     stages.push({mark, start: 0, from, to});
     stageStrip.append(mark);
+  }
+}
+
+/** Back to an unplanned, unpainted strip: the state a photo starts in. */
+function resetStages(): void {
+  for (const {mark} of stages) {
+    mark.style.setProperty('--fill', '0');
+    delete mark.dataset.planned;
+    delete mark.dataset.planning;
   }
 }
 
@@ -286,8 +301,8 @@ async function load(): Promise<void> {
   );
   if (token !== loading) return;
   plannedIn = Math.round(performance.now() - started);
-  hidePlanning();
   placeStages(painting, DURATION_MS[state.style]);
+  hidePlanning();
 
   player = createPlayer({
     canvas,
@@ -366,18 +381,23 @@ function showGhost(image: HTMLImageElement): void {
   context.restore();
 }
 
-/** The stages fill in a quieter ink as each brush is planned, and the words keep count. */
+/** The rule under each brush darkens as its strokes are planned, and the words keep count. */
 function showPlanning(planned: number, of: number): void {
   viewer.setAttribute('aria-busy', 'true');
   stages.forEach((stage, i) => {
-    // A sliver on the brush being planned, so the strip is seen to be live.
-    stage.mark.style.setProperty('--fill', i < planned ? '1' : i === planned ? '0.04' : '0');
+    stage.mark.toggleAttribute('data-planned', i < planned);
+    stage.mark.toggleAttribute('data-planning', i === planned);
   });
   setStatus(`Planning brush ${Math.min(planned + 1, of)} of ${of}…`);
 }
 
+/** Planned, all of it. The rule stays where planning left it and the ink fills over it. */
 function hidePlanning(): void {
   viewer.removeAttribute('aria-busy');
+  for (const {mark} of stages) {
+    mark.toggleAttribute('data-planned', true);
+    mark.removeAttribute('data-planning');
+  }
 }
 
 // ---- what the page says -----------------------------------------------------

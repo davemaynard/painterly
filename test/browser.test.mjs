@@ -188,6 +188,46 @@ test('the transport stays put when the picture changes shape', async () => {
   await page.close();
 });
 
+test('the strip hands over from planning to painting without a flash', async () => {
+  // Planning darkens the rule; the playhead fills it. Two channels, so the end
+  // of planning has nothing to unwind: no frame shows a full strip emptying.
+  const page = await open('photo=golden&seed=1');
+  await page.evaluate(() => {
+    window.film = [];
+    const started = performance.now();
+    const tick = () => {
+      const stages = [...document.querySelectorAll('#stages .stage')];
+      window.film.push({
+        busy: document.querySelector('.viewer').getAttribute('aria-busy') === 'true',
+        ink: stages.reduce(
+          (sum, s) => sum + (+getComputedStyle(s).getPropertyValue('--fill') || 0),
+          0,
+        ),
+        rules: stages.map((s) => getComputedStyle(s).borderBottomColor).join(),
+      });
+      if (performance.now() - started < 6000) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+  // Paint again takes a new seed, so this always plans: the other photos are
+  // planned in the background and switching to one may find it already done.
+  await page.getByRole('button', {name: 'Paint again'}).click();
+  await page.getByRole('button', {name: 'Pause'}).waitFor({timeout: 60_000});
+  await page.getByRole('button', {name: 'Pause'}).click();
+  const film = await page.evaluate(() => window.film);
+
+  const planning = film.filter((frame) => frame.busy);
+  assert.ok(planning.length > 2, `planning was seen in ${planning.length} frames`);
+  const inked = Math.max(...planning.map((frame) => frame.ink));
+  assert.equal(inked, 0, `planning put ink on ${inked} of the marks`);
+
+  const last = film.findIndex((frame, i) => i > 0 && film[i - 1].busy && !frame.busy);
+  assert.ok(last > 0, 'the handover was filmed');
+  assert.equal(film[last].rules, film[last - 1].rules, 'the rule changed colour at the handover');
+  assert.equal(film[last].ink, 0, 'the handover started with ink on the strip');
+  await page.close();
+});
+
 test('the stages are shown, not operated: nothing on the strip is a control', async () => {
   const page = await open('photo=mist&seed=1');
   assert.equal(await stageCount(page), 5);
