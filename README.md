@@ -92,10 +92,49 @@ other than the bundled painter. `packPlan()` and `unpackPlan()` turn a plan into
 a handful of typed arrays and back, exactly: the form to post from a worker or
 keep around, at a seventh of the memory.
 
+## Or from the command line
+
+<p align="center">
+  <img src="docs/styles.jpg" alt="The same photo of a golden retriever four times: the photograph, then painted in matte oil, in gouache, and in ink line and watercolor wash">
+</p>
+
+`cli/` paints a photo on disk in one of three media and writes a JPEG, in a
+few seconds at 1800 px. It is its own small package, so the library keeps no
+runtime dependencies; it runs its TypeScript directly on Node 22.18 or later.
+
+```sh
+npm install                             # also builds the library the CLI paints with
+(cd cli && npm install && npm link)     # puts `painterly` on your PATH
+
+painterly photo.jpg                     # matte oil, to ~/Downloads/photo-oil.jpg
+painterly photo.heic --style gouache --size 2400 --out painting.jpg --open
+```
+
+All three plan with `flow: 'tensor'` and paint with the same hand; a style is
+the rest of the recipe, in `cli/src/styles.ts`.
+
+- **Matte oil** refines down to a brush 1.5 px wide, so eyes and edges stay
+  legible, with six stiff bristles that keep their marks. Its strokes are
+  painted a second time as heights and lit from the upper left, diffuse only:
+  a matte medium has no sheen, just the soft shadow of each ridge.
+- **Gouache** plans from the photo reduced to 32 mixed colors (k-means in
+  Oklab), so each area is one opaque color with a clean edge. An accent too
+  small to earn a color of its own, a neon sign or a red collar, keeps its
+  own.
+- **Ink line and watercolor wash** lays translucent washes over a simplified,
+  softened photo, lets the paper show through, darkens the edges where pigment
+  pools, and draws pen lines only where the picture has a real shape edge
+  (an extended difference of Gaussians, gated by a coarser gradient).
+
+The canvas is cut into bands painted by one process each, which is what makes
+it quick; the bands match a single canvas up to a few levels of antialiasing.
+HEIC is read through macOS's `sips`.
+
 ## How it's built
 
 - `src/image/` measures the photo: a float RGB raster, a linear-time Gaussian
-  blur (three box blurs), luminance and a Sobel gradient. No canvas, no DOM.
+  blur (three box blurs), luminance, a Sobel gradient, and the same gradient
+  smoothed through its structure tensor for calmer strokes. No canvas, no DOM.
 - `src/plan/` decides the strokes, and names the two styles. Aaron Hertzmann's
   [*Painterly Rendering with Curved Brush Strokes of Multiple Sizes*](https://www.mrl.nyu.edu/publications/painterly98/)
   (SIGGRAPH 1998), ported and credited in the module header, with three habits
@@ -115,6 +154,9 @@ keep around, at a seventh of the memory.
   the moments worth returning to are where each brush begins. Back, play and on
   are three drawn glyphs, the same geometry as the carets on the selects; the
   stages beside them show where the painting has got to.
+- `cli/` is the command line: the three media, the finishes that sit the paint
+  on its support (relief, paper tooth, pigment pooling, ink), and the band
+  painters.
 - `processing/` holds the 2020 Processing sketches this grew out of, untouched.
 
 TypeScript, Canvas 2D, no framework. `tsup` builds the library to `dist/` and
@@ -132,6 +174,11 @@ npm run build
 npm run gif      # re-record docs/demo.gif from the page (needs ffmpeg)
 npm run still    # re-shoot docs/still.jpg, the photo-and-painting pair above
 npm run size     # re-measure the Numbers table
+
+npm install --prefix cli
+npm run check --prefix cli    # tsc over the CLI (Biome covers it from the root)
+npm test --prefix cli         # bands against one canvas, the palette, the noise, and each style end to end
+npm run styles --prefix cli   # repaint docs/styles.jpg
 ```
 
 ## Photos

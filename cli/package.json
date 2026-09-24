@@ -1,0 +1,22 @@
+{
+  "name": "painterly-cli",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A photo in, a painting out: matte oil, gouache, or ink line and watercolor wash, from the command line.",
+  "type": "module",
+  "license": "MIT",
+  "bin": {
+    "painterly": "./src/paint.ts"
+  },
+  "scripts": {
+    "check": "tsc -p .",
+    "test": "node --test \"test/*.test.ts\"",
+    "styles": "node scripts/record-styles.ts"
+  },
+  "dependencies": {
+    "@napi-rs/canvas": "1.0.9"
+  },
+  "engines": {
+    "node": ">=22.18"
+  }
+}

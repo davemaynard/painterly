@@ -20,3 +20,7 @@ jobs:
       - run: npm test
       # docs/ is the published demo and is committed; it must match the source.
       - run: git diff --exit-code -- docs
+      # The command line paints with the library just built.
+      - run: npm ci --prefix cli
+      - run: npm run check --prefix cli
+      - run: npm test --prefix cli
