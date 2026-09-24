@@ -76,8 +76,6 @@ export function plan(source: Raster, options: PlanOptions = {}): Plan {
   const canvas = createRaster(width, height, ground);
   const strokes: Stroke[] = [];
   const layerSizes: number[] = [];
-  const refPixel: Rgb = [0, 0, 0];
-  const canvasPixel: Rgb = [0, 0, 0];
 
   radii.forEach((radius, layer) => {
     const reference = blur(source, blurFactor * radius);
@@ -86,15 +84,7 @@ export function plan(source: Raster, options: PlanOptions = {}): Plan {
     const grid = Math.max(1, Math.round(gridFactor * radius));
 
     // Where does the canvas still disagree with the photo at this scale?
-    const difference = new Float32Array(width * height);
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
-        difference[y * width + x] = colorDistance(
-          sample(reference, x, y, refPixel),
-          sample(canvas, x, y, canvasPixel),
-        );
-      }
-    }
+    const difference = differenceMap(reference, canvas);
 
     // One candidate stroke per grid cell whose average error is over the
     // threshold, started at the cell's worst pixel.
@@ -155,6 +145,22 @@ export function plan(source: Raster, options: PlanOptions = {}): Plan {
   });
 
   return {seed, width, height, ground, strokes, layerSizes};
+}
+
+/**
+ * RGB distance between two rasters of the same size, per pixel: the same
+ * measure as colorDistance, read straight from the arrays because it runs
+ * over every pixel for every brush.
+ */
+function differenceMap(a: Raster, b: Raster): Float32Array {
+  const out = new Float32Array(a.width * a.height);
+  for (let px = 0, i = 0; px < out.length; px++, i += 3) {
+    const dr = (a.data[i] as number) - (b.data[i] as number);
+    const dg = (a.data[i + 1] as number) - (b.data[i + 1] as number);
+    const db = (a.data[i + 2] as number) - (b.data[i + 2] as number);
+    out[px] = Math.sqrt(dr * dr + dg * dg + db * db);
+  }
+  return out;
 }
 
 /**
