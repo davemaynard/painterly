@@ -128,11 +128,14 @@ export function plan(source: Raster, options: PlanOptions = {}): Plan {
     // Shuffle first, then draw each stroke's jitter, so the brush's own
     // randomness follows painting order and the whole plan stays reproducible.
     // One at a time rather than push(...layerStrokes): a fine grid holds more
-    // strokes than an argument list has room for.
+    // strokes than an argument list has room for. Nothing measures the canvas
+    // after the last brush, and the last brush lays most of the strokes, so
+    // its strokes are not stamped.
+    const last = layer === radii.length - 1;
     random.shuffle(layerStrokes);
     for (const stroke of layerStrokes) {
       stroke.jitter = Math.floor(random.next() * 0x100000000);
-      stampStroke(canvas, stroke.points, radius, stroke.color);
+      if (!last) stampStroke(canvas, stroke.points, radius, stroke.color);
       strokes.push(stroke);
     }
     layerSizes.push(layerStrokes.length);

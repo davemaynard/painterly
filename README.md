@@ -54,7 +54,7 @@ Run `npm run size` to regenerate the first two.
 | Library, gzipped | **7.4 KB** |
 | Demo page script and its worker, gzipped | **11.0 KB** |
 | Runtime dependencies | **0** (a Mersenne Twister is bundled, see `NOTICE`) |
-| Planning a 1050 × 1400 photo | **~1.5 s** on an M4 Mac mini, ~108,000 strokes |
+| Planning a 1050 × 1400 photo | **~1.2 s** on an M4 Mac mini, ~108,000 strokes |
 | A plan crossing back from the worker | **15 MB** packed into typed arrays, not 110 MB of objects |
 | Longest frame CI will accept | **60 ms** painting, **100 ms** skipping to the end |
 
