@@ -1,6 +1,6 @@
 // What a stroke looks like once a hand holds the brush. The planner only says
-// where a stroke goes, how wide it is and what colour; a Brush says how many
-// bristles that becomes, how translucent, how much each bristle's colour and
+// where a stroke goes, how wide it is and what color; a Brush says how many
+// bristles that becomes, how translucent, how much each bristle's color and
 // weight wander. `bristle` is the 2020 look; `round` is the pointillist sketch
 // that never finished; `flat` is a wide, opaque house-painter's brush.
 
@@ -14,7 +14,7 @@ export type Brush = {
   weight: [number, number];
   /** Opacity of each bristle, 0..1. */
   alpha: number;
-  /** How far each bristle's colour may wander from the stroke colour, 0..255 per channel. */
+  /** How far each bristle's color may wander from the stroke color, 0..255 per channel. */
   drift: number;
   /** Draw a dot at each point instead of a line through them. */
   dots: boolean;

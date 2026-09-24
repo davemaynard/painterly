@@ -63,10 +63,10 @@ export function colorDistance(a: Rgb, b: Rgb): number {
 }
 
 /**
- * The colour the canvas starts as. The 2020 sketches primed with the single most
+ * The color the canvas starts as. The 2020 sketches primed with the single most
  * common pixel value, which on a photo means one arbitrary value wins by a hair
  * and a sky that shades across sixty levels loses to a flat wall. People see
- * colour in families, so this counts by hue (twelve of them, plus dark, mid and
+ * color in families, so this counts by hue (twelve of them, plus dark, mid and
  * light neutrals), takes the biggest family, and averages the pixels in it.
  */
 export function dominantColor(raster: Raster): Rgb {

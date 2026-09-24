@@ -11,7 +11,7 @@ export type Painter = {
   paintTo(count: number): void;
   /** How many strokes are on the canvas now. */
   readonly painted: number;
-  /** Prime the canvas with the ground colour and forget every stroke. */
+  /** Prime the canvas with the ground color and forget every stroke. */
   reset(): void;
   /**
    * Put a snapshot taken at `count` strokes back on the canvas and continue from
@@ -109,7 +109,7 @@ function drawStroke(context: Context2D, stroke: Stroke, brush: Brush): void {
     context.lineWidth = width;
 
     if (brush.dots || points.length === 1) {
-      // Only the dotted brush fills, and parsing a colour twice per bristle is
+      // Only the dotted brush fills, and parsing a color twice per bristle is
       // a tenth of the time a repaint takes.
       context.fillStyle = color;
       for (const [x, y] of points) {

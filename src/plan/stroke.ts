@@ -23,7 +23,7 @@ const scratchA: Rgb = [0, 0, 0];
 const scratchB: Rgb = [0, 0, 0];
 
 /**
- * Start at (x0, y0) in the colour the blurred reference has there, and walk.
+ * Start at (x0, y0) in the color the blurred reference has there, and walk.
  * Stops when the canvas already matches the reference better than this stroke
  * would, when the gradient vanishes, at the edge, or at `maxLength`.
  */

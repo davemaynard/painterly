@@ -12,7 +12,7 @@
   --muted: #6b6965;
   --line: #d8d6d1;
 
-  /* Two surfaces from the same two colours: the rail you work on, and the
+  /* Two surfaces from the same two colors: the rail you work on, and the
      quieter ground the picture hangs on. */
   --rail: color-mix(in oklab, var(--paper) 97%, var(--ink));
   --ground: color-mix(in oklab, var(--paper) 91%, var(--ink));
@@ -173,7 +173,7 @@ legend,
   font-size: 0.6875rem;
 }
 
-/* Chosen: the picture comes back to full colour and the line goes to ink. */
+/* Chosen: the picture comes back to full color and the line goes to ink. */
 .photo:has(input:checked) {
   color: var(--ink);
 }
@@ -406,10 +406,10 @@ legend,
 
 /* The stages: the rule beside the buttons, cut where each brush hands over to
    the next and as wide as the time that brush takes. It carries two things at
-   once, in two channels that never fight: the rule's *colour* says which
+   once, in two channels that never fight: the rule's *color* says which
    brushes are planned, and the ink line growing along it says how much is
    painted. So the end of planning changes nothing that has to be unwound —
-   the grey rule stays, and the ink fills over it. */
+   the gray rule stays, and the ink fills over it. */
 
 .stages {
   flex: 1;
@@ -417,7 +417,7 @@ legend,
   min-width: 4rem;
 }
 
-/* No height of its own, so the rule lands on the buttons' centre line and the
+/* No height of its own, so the rule lands on the buttons' center line and the
    ticks rise from it. */
 .stage {
   flex: var(--share, 1) 1 0;

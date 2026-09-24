@@ -6,7 +6,7 @@ export type Point = [number, number];
 
 /**
  * One brush stroke, as the planner decided it. The renderer decides what a
- * stroke of this radius and colour looks like; the planner only says where it
+ * stroke of this radius and color looks like; the planner only says where it
  * goes and how long it runs.
  */
 export type Stroke = {
@@ -30,7 +30,7 @@ export type Plan = {
   seed: number;
   width: number;
   height: number;
-  /** The colour the canvas is primed with before the first stroke. */
+  /** The color the canvas is primed with before the first stroke. */
   ground: Rgb;
   strokes: Stroke[];
   /** How many strokes each layer contributed, in layer order. */

@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {packedBuffers, packPlan, unpackPlan} from '../src/plan/pack.ts';
 
-/** Strokes with the awkward values a real plan has: fractional colours and coordinates. */
+/** Strokes with the awkward values a real plan has: fractional colors and coordinates. */
 function synthetic(count) {
   const strokes = [];
   for (let i = 0; i < count; i++) {

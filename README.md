@@ -1,7 +1,7 @@
 # painterly
 
-**painterly** *(adjective)*: of a painting or its style, characterised by visible
-brushwork and the rendering of form through colour and tone rather than by line.
+**painterly** *(adjective)*: of a painting or its style, characterized by visible
+brushwork and the rendering of form through color and tone rather than by line.
 This is a program that takes a photo and paints it that way, in your browser,
 while you watch.
 
@@ -37,7 +37,7 @@ It finishes in 45 seconds at any size — 20 for the underpainting — then stop
   finished. There is a Download button and nothing else to do.
 - **Or stop at the underpainting.** The *Underpainting* style plans the first,
   biggest brush only, with longer strokes and a looser threshold, and keeps
-  the abstraction: a few hundred ribbons of colour that are unmistakably the
+  the abstraction: a few hundred ribbons of color that are unmistakably the
   photo and nothing like it. It was meant as a stage on the way to a painting
   and turned out to be the picture people liked.
 - **Your own photo.** Drop one on the picture, or pick a file. It is painted in
@@ -84,7 +84,7 @@ painter.paintTo(painting.strokes.length);
 `plan()` takes options for the brush radii, the error threshold, stroke length
 and curvature, and an `onLayer` callback that hears from it after each brush;
 the defaults are tuned for photos around 1400 px. `Plan` and `Stroke` are plain
-typed objects, so a plan can be serialised, replayed, or rendered by something
+typed objects, so a plan can be serialized, replayed, or rendered by something
 other than the bundled painter. `packPlan()` and `unpackPlan()` turn a plan into
 a handful of typed arrays and back, exactly: the form to post from a worker or
 keep around, at a seventh of the memory.
@@ -99,7 +99,7 @@ keep around, at a seventh of the memory.
   kept from the 2020 sketches: a canvas primed with the photo's dominant hue
   family, a shuffled stroke order so the hand looks human, and seeded randomness.
 - `src/paint/` is the hand: a `Brush` says how many bristles a stroke becomes,
-  how translucent, how far each hair's colour and weight wander, and how ragged
+  how translucent, how far each hair's color and weight wander, and how ragged
   its start and finish are. `bristle` is the 2020 look, `ribbon` is this port's
   first brush and the underpainting's default, `round` is the pointillist sketch
   that never finished, `flat` is a house-painter's brush.

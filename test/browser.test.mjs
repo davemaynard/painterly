@@ -78,7 +78,7 @@ const positionOf = (page) =>
   page.locator('#stages').evaluate((strip) => Number(strip.dataset.position));
 const stageCount = (page) => page.locator('#stages .stage').count();
 
-test('the page paints: the canvas leaves the ground colour and reaches Done', async () => {
+test('the page paints: the canvas leaves the ground color and reaches Done', async () => {
   const page = await open('photo=mist&seed=1');
   await seekTo(page, 0);
   const ground = await canvasPng(page);
@@ -259,7 +259,7 @@ test('the strip hands over from planning to painting without a flash', async () 
 
   const last = film.findIndex((frame, i) => i > 0 && film[i - 1].busy && !frame.busy);
   assert.ok(last > 0, 'the handover was filmed');
-  assert.equal(film[last].rules, film[last - 1].rules, 'the rule changed colour at the handover');
+  assert.equal(film[last].rules, film[last - 1].rules, 'the rule changed color at the handover');
   assert.equal(film[last].ink, 0, 'the handover started with ink on the strip');
   await page.close();
 });
@@ -411,7 +411,7 @@ test('while a photo is planned the picture shows the photo, the stages fill, the
   const viewer = page.locator('figure[aria-busy="true"]');
   await page.getByRole('radio', {name: /oranges/i}).check();
   await viewer.waitFor({timeout: 5_000});
-  // The canvas is neither the old painting nor black: the photo, faint and grey.
+  // The canvas is neither the old painting nor black: the photo, faint and gray.
   const middle = await page.evaluate(() => {
     const canvas = document.querySelector('canvas');
     const [r, g, b] = canvas

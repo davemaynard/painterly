@@ -4,7 +4,7 @@
 // Hertzmann's "Painterly Rendering with Curved Brush Strokes of Multiple Sizes"
 // (SIGGRAPH 1998), https://www.mrl.nyu.edu/publications/painterly98/, with
 // three habits kept from the 2020
-// Processing sketches: the canvas is primed with the photo's dominant colour,
+// Processing sketches: the canvas is primed with the photo's dominant color,
 // stroke order within a layer is shuffled so the hand looks human, and the
 // randomness is seeded so the same photo paints the same way every time.
 import {blur} from '../image/blur';

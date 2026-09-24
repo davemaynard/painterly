@@ -406,7 +406,7 @@ function pixelsOf(image: HTMLImageElement, width: number, height: number): PlanS
 // ---- while the planner works ------------------------------------------------
 
 /**
- * The photo itself, faint and grey, stands in for the painting while its
+ * The photo itself, faint and gray, stands in for the painting while its
  * strokes are planned: the picture about to be painted, before any paint.
  */
 function showGhost(image: HTMLImageElement): void {

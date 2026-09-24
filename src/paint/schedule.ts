@@ -7,7 +7,7 @@
 import type {Plan} from '../types';
 
 /**
- * Share of the total duration each layer gets, coarsest first, renormalised to
+ * Share of the total duration each layer gets, coarsest first, renormalized to
  * the plan's own layer count. The table is the five-brush default; `sharesFor`
  * stretches it to whatever `radii` the caller actually passed to plan().
  */
