@@ -51,8 +51,8 @@ Run `npm run size` to regenerate the first two.
 
 | | |
 |---|---|
-| Library, gzipped | **7.4 KB** |
-| Demo page script and its worker, gzipped | **11.0 KB** |
+| Library, gzipped | **7.7 KB** |
+| Demo page script and its worker, gzipped | **11.2 KB** |
 | Runtime dependencies | **0** (a Mersenne Twister is bundled, see `NOTICE`) |
 | Planning a 1050 × 1400 photo | **~1.2 s** on an M4 Mac mini, ~108,000 strokes |
 | A plan crossing back from the worker | **15 MB** packed into typed arrays, not 110 MB of objects |
@@ -83,7 +83,10 @@ painter.paintTo(painting.strokes.length);
 
 `plan()` takes options for the brush radii, the error threshold, stroke length
 and curvature, and an `onLayer` callback that hears from it after each brush;
-the defaults are tuned for photos around 1400 px. `Plan` and `Stroke` are plain
+the defaults are tuned for photos around 1400 px. `flow: 'tensor'` trades the
+1998 paper's swirls for calm: stroke directions are smoothed first, so a sky or
+a lawn is laid in coherent runs that take their heading from the nearest real
+edge. `Plan` and `Stroke` are plain
 typed objects, so a plan can be serialized, replayed, or rendered by something
 other than the bundled painter. `packPlan()` and `unpackPlan()` turn a plan into
 a handful of typed arrays and back, exactly: the form to post from a worker or

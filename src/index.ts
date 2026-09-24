@@ -18,6 +18,7 @@ export {
   type Raster,
   rasterFromImageData,
   sample,
+  smoothGradient,
   sobel,
 } from './image';
 export {

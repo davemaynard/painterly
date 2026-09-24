@@ -28,6 +28,7 @@ const SURFACE = [
   'rasterFromImageData',
   'sample',
   'simulate',
+  'smoothGradient',
   'sobel',
   'styles',
   'unpackPlan',

@@ -8,7 +8,7 @@
 // stroke order within a layer is shuffled so the hand looks human, and the
 // randomness is seeded so the same photo paints the same way every time.
 import {blur} from '../image/blur';
-import {sobel} from '../image/gradient';
+import {smoothGradient, sobel} from '../image/gradient';
 import {colorDistance, createRaster, dominantColor, type Raster, sample} from '../image/raster';
 import {createRandom} from '../random';
 import type {Plan, Rgb, Stroke} from '../types';
@@ -38,6 +38,15 @@ export type PlanOptions = {
   maxLength?: number;
   /** 1 follows the image gradient exactly; lower values straighten strokes. Default 1. */
   curvature?: number;
+  /**
+   * Which way strokes run. `gradient`, the default, is Hertzmann's: along the
+   * edges, with swirls in flat areas. `tensor` smooths the direction first
+   * (see `smoothGradient`) so flat areas take the direction of the nearest
+   * real edge: calmer, and closer to how a painter lays in a sky.
+   */
+  flow?: 'gradient' | 'tensor';
+  /** How far the `tensor` flow is smoothed, as a multiple of the radius. Default 2. */
+  flowScale?: number;
   /** Called after each brush is planned: how many are done, out of how many. */
   onLayer?: (planned: number, of: number) => void;
 };
@@ -57,6 +66,8 @@ export function plan(source: Raster, options: PlanOptions = {}): Plan {
     minLength = 3,
     maxLength = 10,
     curvature = 1,
+    flow = 'gradient',
+    flowScale = 2,
     onLayer,
   } = options;
   const random = createRandom(seed);
@@ -70,7 +81,8 @@ export function plan(source: Raster, options: PlanOptions = {}): Plan {
 
   radii.forEach((radius, layer) => {
     const reference = blur(source, blurFactor * radius);
-    const gradient = sobel(reference);
+    const gradient =
+      flow === 'tensor' ? smoothGradient(reference, flowScale * radius) : sobel(reference);
     const grid = Math.max(1, Math.round(gridFactor * radius));
 
     // Where does the canvas still disagree with the photo at this scale?

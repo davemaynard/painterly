@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {
   createRandom,
+  createRaster,
   defaultRadii,
   dominantColor,
   meanDifference,
@@ -120,4 +121,57 @@ test('the underpainting style is one big brush with long strokes', () => {
   const longest = Math.max(...painting.strokes.map((s) => s.points.length));
   assert.ok(longest > 10, `longest stroke has ${longest} points`);
   assert.ok(painting.strokes.length < plan(source, {seed: 1}).strokes.length);
+});
+
+/**
+ * A sky: a gentle ramp with grain on it, the kind of nearly flat area where
+ * the raw gradient is mostly noise.
+ */
+function skyRaster(width = 240, height = 160) {
+  const raster = createRaster(width, height);
+  const random = createRandom(9);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = (y * width + x) * 3;
+      const grain = (random.next() - 0.5) * 24;
+      raster.data[i] = 90 + (y / height) * 30 + grain;
+      raster.data[i + 1] = 140 + (y / height) * 30 + grain;
+      raster.data[i + 2] = 220 + grain;
+    }
+  }
+  return raster;
+}
+
+/** Mean turn between a stroke's consecutive steps, in radians. */
+function meanTurn(painting) {
+  let turns = 0;
+  let steps = 0;
+  for (const {points} of painting.strokes) {
+    for (let i = 2; i < points.length; i++) {
+      const a = Math.atan2(
+        points[i - 1][1] - points[i - 2][1],
+        points[i - 1][0] - points[i - 2][0],
+      );
+      const b = Math.atan2(points[i][1] - points[i - 1][1], points[i][0] - points[i - 1][0]);
+      turns += Math.abs(Math.atan2(Math.sin(b - a), Math.cos(b - a)));
+      steps++;
+    }
+  }
+  return turns / steps;
+}
+
+test('the tensor flow lays a noisy sky in calm runs where the gradient curls', () => {
+  const source = skyRaster();
+  const options = {seed: 4, radii: [12, 6], threshold: 4, maxLength: 12};
+  const curling = meanTurn(plan(source, options));
+  const calm = meanTurn(plan(source, {...options, flow: 'tensor'}));
+  assert.ok(
+    calm < curling * 0.5,
+    `tensor turns ${calm.toFixed(3)} rad a step, gradient ${curling.toFixed(3)}`,
+  );
+});
+
+test('the gradient flow is the default, so the tensor is opt-in', () => {
+  const source = edgeRaster();
+  assert.deepEqual(plan(source, {seed: 5}), plan(source, {seed: 5, flow: 'gradient'}));
 });
