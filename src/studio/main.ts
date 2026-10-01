@@ -23,7 +23,8 @@ const hash = new URLSearchParams(location.hash.slice(1));
  * Simulation detail, texels per inch of canvas. A phone gets a lighter
  * canvas; `#detail=` overrides it, for the tests on a software GPU.
  */
-const DETAIL = Number(hash.get('detail')) || (window.innerWidth < NARROW_PX ? 72 : 128);
+const PHONE = window.innerWidth < NARROW_PX;
+const DETAIL = Number(hash.get('detail')) || (PHONE ? 60 : 128);
 const SPEEDS = [1, 2, 4, 8];
 /** How often, in frames, to ask the GPU what paint is on the tool in hand. */
 const PROBE_EVERY = 6;
@@ -112,6 +113,8 @@ const player = createPlayer({
   timeline,
   surface,
   performer,
+  // A phone's GPU memory runs out sooner: one copy of the canvas, not two.
+  copies: PHONE ? 1 : 2,
   present() {
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.viewport(0, 0, canvas.width, canvas.height);

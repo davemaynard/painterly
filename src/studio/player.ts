@@ -51,9 +51,11 @@ export type PlayerOptions = {
   /** Draw the tool where the pose says it is. */
   drawTool(pose: Pose): void;
   onChange(state: PlayerState): void;
+  /** How many copies of the canvas to keep for going back; fewer on a phone. */
+  copies?: number;
 };
 
-/** Copies of the canvas kept for going back. Each is ~25 MB per million texels. */
+/** Copies of the canvas kept for going back, unless the page asks for fewer. Each is 40 MB per million texels. */
 const COPIES = 2;
 /** Touches a frame may start with, before it learns what the GPU can take. */
 const FIRST_ALLOWANCE = 240;
@@ -111,7 +113,7 @@ export function createPlayer(options: PlayerOptions): Player {
     if (step === 0 || copies.has(step)) return;
     copies.set(step, surface.snapshot());
     const kept = [...copies.keys()].sort((a, b) => a - b);
-    while (kept.length > COPIES) {
+    while (kept.length > (options.copies ?? COPIES)) {
       const oldest = kept.shift() as number;
       surface.release(copies.get(oldest) as Snapshot);
       copies.delete(oldest);
