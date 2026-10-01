@@ -63,7 +63,8 @@ try {
 canvas.addEventListener('webglcontextlost', (event) => {
   event.preventDefault();
   player.pause();
-  status.textContent = 'The browser took back the GPU this painting lives on. Reload to start again.';
+  status.textContent =
+    'The browser took back the GPU this painting lives on. Reload to start again.';
 });
 
 const surface = createSurface(gl, timeline.width, timeline.height, DETAIL);

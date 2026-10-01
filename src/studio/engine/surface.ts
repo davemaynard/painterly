@@ -165,7 +165,8 @@ export type Surface = {
   render(options?: {relief?: number}): void;
   /** The colors along a tool's working edge, `samples` of them, as sRGB bytes with load in alpha. */
   probe(tool: Tool, samples: number): Uint8Array;
-  snapshot(): Snapshot;
+  /** Copy the canvas: into `into` when given, reusing its textures, otherwise into new ones. */
+  snapshot(into?: Snapshot): Snapshot;
   restore(snapshot: Snapshot): void;
   release(snapshot: Snapshot): void;
   releaseTool(tool: Tool): void;
@@ -503,8 +504,8 @@ export function createSurface(
     dry,
     render,
     probe,
-    snapshot() {
-      const copy = makeLayers();
+    snapshot(into) {
+      const copy = into ?? makeLayers();
       copyAll(canvas, copy);
       return copy;
     },

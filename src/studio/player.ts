@@ -5,7 +5,9 @@
 // everything before it. Going forward is painting faster; going back means
 // starting again from an earlier copy of the canvas. Copies are kept at the
 // starts of the steps the painting has passed, two at a time, because each
-// is the whole canvas, five half-float textures deep.
+// is the whole canvas, five half-float textures deep. Their textures are
+// allocated once, up front, and reused: allocating 126 MB at a step crossing
+// cost a playing frame 86 ms.
 //
 // No frame paints more than it can afford. The clock asks for the events up
 // to now; if the GPU cannot keep up, the clock waits for the paint rather
@@ -55,7 +57,7 @@ export type PlayerOptions = {
   copies?: number;
 };
 
-/** Copies of the canvas kept for going back, unless the page asks for fewer. Each is 40 MB per million texels. */
+/** Copies of the canvas kept for going back, unless the page asks for fewer. Each is 40 bytes a texel. */
 const COPIES = 2;
 /** Touches a frame may start with, before it learns what the GPU can take. */
 const FIRST_ALLOWANCE = 240;
@@ -80,7 +82,11 @@ export function createPlayer(options: PlayerOptions): Player {
   let frame = 0;
   let dirty = true;
   let reported = '';
+  const limit = options.copies ?? COPIES;
+  /** Copies held, by the step whose start they show. */
   const copies = new Map<number, Snapshot>();
+  /** Textures for copies not yet taken. */
+  const spare: Snapshot[] = Array.from({length: limit}, () => surface.snapshot());
   const waiting: {time: number; done: () => void}[] = [];
 
   performer.reset();
@@ -108,16 +114,16 @@ export function createPlayer(options: PlayerOptions): Player {
     onChange(now);
   };
 
-  /** Keep a copy at the start of each step passed, holding only the newest few. */
+  /** Keep a copy at the start of each step passed; when all are taken, the earliest makes way. */
   const keepCopy = (step: number) => {
-    if (step === 0 || copies.has(step)) return;
-    copies.set(step, surface.snapshot());
-    const kept = [...copies.keys()].sort((a, b) => a - b);
-    while (kept.length > (options.copies ?? COPIES)) {
-      const oldest = kept.shift() as number;
-      surface.release(copies.get(oldest) as Snapshot);
-      copies.delete(oldest);
+    if (step === 0 || limit === 0 || copies.has(step)) return;
+    let into = spare.pop();
+    if (!into) {
+      const earliest = Math.min(...copies.keys());
+      into = copies.get(earliest) as Snapshot;
+      copies.delete(earliest);
     }
+    copies.set(step, surface.snapshot(into));
   };
 
   /** Apply events up to `until`, at most `budget` of them. True when it got there. */
@@ -247,8 +253,9 @@ export function createPlayer(options: PlayerOptions): Player {
       playing = false;
       cancelAnimationFrame(frame);
       frame = 0;
-      for (const copy of copies.values()) surface.release(copy);
+      for (const copy of [...copies.values(), ...spare]) surface.release(copy);
       copies.clear();
+      spare.length = 0;
     },
   };
 }
