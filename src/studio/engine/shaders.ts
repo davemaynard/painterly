@@ -455,7 +455,8 @@ float dryHeight(vec2 p) {
 float penFilm(vec2 p) {
   float around = 0.25 * (dryHeight(p + vec2(4.0, 0.0)) + dryHeight(p - vec2(4.0, 0.0))
     + dryHeight(p + vec2(0.0, 4.0)) + dryHeight(p - vec2(0.0, 4.0)));
-  return max(0.3 * uLevel, uLevel + around - dryHeight(p));
+  // Over a ridge it runs thinner, but never so thin that what is under it shows.
+  return max(0.8 * uLevel, uLevel + around - dryHeight(p));
 }
 
 /**
@@ -466,7 +467,9 @@ float penFilm(vec2 p) {
  * its own outline.
  */
 float levelAt(vec2 q, vec2 p) {
-  if (uKind == PEN) return penFilm(p);
+  // A pen's line is rounded across, full in the middle and thin at its edges,
+  // so the edge of what it fills slopes rather than stands like a cut.
+  if (uKind == PEN) return penFilm(p) * mix(0.35, 1.0, smoothstep(1.0, 0.55, length(q)));
   if (uKind != FLAT && uKind != ROUND) return uLevel;
   float clumps = bristles(q.x, max(uShape.x, 4.0));
   return uLevel * mix(1.3, 0.75, clumps) * mix(1.2, 0.9, uPressure);

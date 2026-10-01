@@ -10,7 +10,7 @@
 // Everything is in inches on a 16 × 12 canvas, from the top left.
 import {createRandom, type Random} from '../../random.ts';
 import type {Mix, PaintName} from '../engine/pigments.ts';
-import {tools} from '../tools.ts';
+import {type ToolSpec, tools} from '../tools.ts';
 import {
   arc,
   combFlick,
@@ -18,6 +18,7 @@ import {
   flick,
   hatch,
   outline,
+  passesOver,
   pats,
   pounce,
   type Region,
@@ -34,8 +35,11 @@ const HEIGHT = 12;
 
 const MOON = {x: 5.6, y: 2.05, radius: 0.48};
 const CLEARING = {x: 8.8, y: 8.95};
-/** Where the fox sits: at the clearing's left edge, facing into the light. */
-const FOX = {x: 7.65, y: 9.62, scale: 1.8};
+/**
+ * Where the fox sits: on the far edge of the clearing, in its light, beside
+ * the end of the path and facing into it. Small, as a fox is among trees.
+ */
+const FOX = {x: 8.35, y: 9.13, scale: 0.8};
 
 /** The far edge of the ground at `x`: a low, uneven line, dipping where the clearing opens. */
 const horizon = (x: number) =>
@@ -101,6 +105,30 @@ const SKY_POUNCE: Region = outline([
 
 /** The sky above the mist, where the wide brush crisscrosses. */
 const UPPER_SKY: Region = rectangle(-0.3, -0.3, WIDTH + 0.3, 6.2);
+
+/**
+ * The pool of light in the clearing, where the fox sits. Its warm drops are
+ * spread first, with a clean brush, and the greens are laid in around it.
+ */
+const LIGHT: Region = outline(
+  Array.from({length: 32}, (_, i) => ({
+    x: 8.6 + 2.2 * Math.cos((i / 32) * Math.PI * 2),
+    y: 9.9 + 1.0 * Math.sin((i / 32) * Math.PI * 2),
+  })),
+);
+
+/**
+ * Where the scrubber is pounced on the ground: low enough that the pad stops
+ * short of the wet mist and never carries its blue down into the light.
+ */
+const GROUND_POUNCE: Region = outline([
+  ...Array.from({length: 33}, (_, i) => {
+    const x = -0.2 + (i / 32) * (WIDTH + 0.4);
+    return {x, y: horizon(x) + 0.55};
+  }),
+  {x: WIDTH + 0.2, y: HEIGHT + 0.2},
+  {x: -0.2, y: HEIGHT + 0.2},
+]);
 
 const GROUND: Region = outline([
   ...Array.from({length: 33}, (_, i) => {
@@ -173,13 +201,14 @@ const MIST_ROW: Drop[] = Array.from({length: 18}, (_, i) => {
 const G: PaintName = 'sapGreen';
 const T: PaintName = 'phthaloGreen';
 const O: PaintName = 'yellowOchre';
+const Y: PaintName = 'cadmiumYellow';
 const R: PaintName = 'burntSienna';
 const K: PaintName = 'marsBlack';
 
 // biome-ignore format: the drops read as the rows they make on the canvas
 const GROUND_ROWS: [number, [number, PaintName][]][] = [
-  [9.65, [[0.5, T], [2.2, G], [4, R], [6, O], [8.7, W], [9.8, O], [11.3, O], [12.9, R], [14.4, G], [15.6, T]]],
-  [10.65, [[0.5, K], [2, T], [3.6, T], [5.2, G], [7, G], [8.6, G], [10.6, W], [11.7, O], [12.9, O], [14.2, G], [15.5, K]]],
+  [9.65, [[0.5, T], [2.2, G], [4, R], [6, O], [7.5, Y], [8.4, W], [9.3, Y], [10.2, O], [11.3, O], [12.9, R], [14.4, G], [15.6, T]]],
+  [10.65, [[0.5, K], [2, T], [3.6, T], [5.2, G], [6.9, O], [8.2, Y], [9.2, W], [10.6, W], [11.7, O], [12.9, O], [14.2, G], [15.5, K]]],
   [11.55, [[0.5, K], [2, T], [3.6, G], [5.2, T], [7, G], [8.8, T], [10.5, G], [11.9, O], [12.9, W], [14, O], [15.5, K]]],
 ];
 
@@ -213,15 +242,36 @@ const DROPS: Drop[] = [
   ...PATH_DROPS,
 ];
 
+/**
+ * Whether a flat brush's strokes pass right over every part of a drop on the
+ * canvas, its middle and all round its edge, so none of its first shape is
+ * left standing.
+ */
+function spreads(strokes: Gesture[], drop: Drop, brush: ToolSpec): boolean {
+  const radius = (tools.tube.width / 2) * drop.size;
+  const parts = [
+    drop.at,
+    ...Array.from({length: 8}, (_, i) => ({
+      x: drop.at.x + Math.cos((i * Math.PI) / 4) * radius,
+      y: drop.at.y + Math.sin((i * Math.PI) / 4) * radius,
+    })),
+  ].filter((p) => p.x >= 0 && p.x <= WIDTH && p.y >= 0 && p.y <= HEIGHT);
+  return parts.every((p) =>
+    strokes.some((g) => g.kind === 'stroke' && passesOver(g.points, p, brush.width, brush.depth)),
+  );
+}
+
 const PRUSSIAN_DROPS = DROPS.filter((drop) => drop.paint === P).map((drop) => drop.at);
 /** Drops the sky brush must not reach: the dark ones are the knife's, the low ones belong to the mist and the ground. */
 const KEEP_CLEAR = DROPS.filter((drop) => drop.paint === P || drop.at.y > 7).map((drop) => drop.at);
 
 // ─── The trunks ─────────────────────────────────────────────────────────────
 //
-// Three depths. Far trunks are thin, lighter and bluer, painted first; then
-// the middle distance; then the near trunks, wide, rooted below the bottom
-// edge. The moon and the clearing are kept open.
+// Three depths. Far trunks are thin and pale, the mist's own blue and white,
+// painted first; then the middle distance, navy and umber; then the near
+// trunks, wide, rooted below the bottom edge. Every one is pulled up through
+// the wet sky and drags its blue up with it. The moon and the clearing are
+// kept open.
 
 type Depth = 'far' | 'middle' | 'near';
 type Trunk = {x: number; depth: Depth};
@@ -258,20 +308,26 @@ const TRUNK_PAINT: Record<
   {mix: Mix; amount: number; passes: number; spacing: number; width: number}
 > = {
   far: {
-    mix: {prussianBlue: 2, burntUmber: 1, skyBlue: 1},
+    mix: {skyBlue: 2, titaniumWhite: 1, prussianBlue: 0.5},
     amount: 7,
     passes: 1,
     spacing: 0,
     width: 0.2,
   },
   middle: {
-    mix: {burntUmber: 2, marsBlack: 1, prussianBlue: 1},
+    mix: {burntUmber: 1.5, prussianBlue: 1.5, marsBlack: 0.6},
     amount: 14,
     passes: 1,
     spacing: 0,
     width: 0.42,
   },
-  near: {mix: {burntUmber: 2, marsBlack: 2}, amount: 16, passes: 2, spacing: 0.34, width: 0.76},
+  near: {
+    mix: {burntUmber: 2, marsBlack: 1.5, prussianBlue: 0.6},
+    amount: 16,
+    passes: 2,
+    spacing: 0.34,
+    width: 0.76,
+  },
 };
 
 function plant(random: Random): Planted[] {
@@ -360,14 +416,34 @@ const FOX_TAIL: [number, number, number][] = [
   [0.46, -0.005, 0.015],
 ];
 
+/** A point of the fox's drawing on the canvas. */
+const onCanvas = ([x, y]: [number, number]): Point => ({
+  x: FOX.x + x * FOX.scale,
+  y: FOX.y + y * FOX.scale,
+});
+
+/** Whether `p` is on the fox's body or tail, or within `margin` inches of them. */
+function onFox(p: Point, margin: number): boolean {
+  const body = outline(FOX_BODY.map(onCanvas));
+  const around = [
+    {x: 0, y: 0},
+    ...Array.from({length: 8}, (_, i) => ({
+      x: Math.cos((i * Math.PI) / 4) * margin,
+      y: Math.sin((i * Math.PI) / 4) * margin,
+    })),
+  ];
+  if (around.some((d) => body.contains({x: p.x + d.x, y: p.y + d.y}))) return true;
+  return FOX_TAIL.some(([x, y, thickness]) => {
+    const middle = onCanvas([x, y]);
+    return Math.hypot(p.x - middle.x, p.y - middle.y) < (thickness / 2) * FOX.scale + margin;
+  });
+}
+
 /** The lean of the fox's back, haunch to nape: the way the pen fills the body. */
 const BACK_LEAN = Math.atan2(-0.56, 0.28);
 
 function foxGestures(): Gesture[] {
-  const at = ([x, y]: [number, number]): Point => ({
-    x: FOX.x + x * FOX.scale,
-    y: FOX.y + y * FOX.scale,
-  });
+  const at = onCanvas;
   const line = (points: [number, number][]): Gesture => ({
     kind: 'stroke',
     points: smooth(
@@ -386,7 +462,10 @@ function foxGestures(): Gesture[] {
     line(FOX_BODY.slice(0, 15)),
     line([...FOX_BODY.slice(14), FOX_BODY[0] as [number, number]]),
   ];
-  const fill = hatch(outline(FOX_BODY.map(at)), BACK_LEAN, 0.045, tools.pen.width / 2);
+  // Lines closer than the nib is wide, so they run together into one film;
+  // and in under the edge's own line, so the two meet without a seam.
+  const nib = tools.pen.width;
+  const fill = hatch(outline(FOX_BODY.map(at)), BACK_LEAN, nib * 0.6, nib / 4);
   // Each ear from both corners of its base and its middle up to the tip; the
   // tail as sweeps laid side by side across its thickness, thinning to the tip.
   const ears = FOX_EARS.flatMap(([base, tip, other]) => {
@@ -416,6 +495,7 @@ function dropPaint(): Step {
       'cobaltBlue',
       'prussianBlue',
       'yellowOchre',
+      'cadmiumYellow',
       'burntSienna',
       'sapGreen',
       'phthaloGreen',
@@ -443,12 +523,11 @@ function spreadSky(random: Random): Step {
     avoid,
     pressure: [0.5, 0.95, 0.55],
   });
-  // A light drop hemmed in by dark ones still gets spread: a short stroke
-  // across it, aimed as far from its dark neighbors as it can be.
-  const touched = (at: Point) =>
-    strokes.some((g) => g.kind === 'stroke' && g.points.some((p) => near(p, at, 0.55)));
+  // A light drop the strokes missed, or only grazed, still gets spread: a
+  // short stroke right through it, aimed as far from its dark neighbors as it
+  // can be.
   for (const drop of DROPS) {
-    if (drop.paint === P || drop.at.y > 7 || touched(drop.at)) continue;
+    if (drop.paint === P || drop.at.y > 7 || spreads(strokes, drop, tools.wideBrush)) continue;
     const dark = PRUSSIAN_DROPS.reduce((a, b) =>
       Math.hypot(b.x - drop.at.x, b.y - drop.at.y) < Math.hypot(a.x - drop.at.x, a.y - drop.at.y)
         ? b
@@ -506,37 +585,116 @@ function pullMist(random: Random): Step {
 
 function layGround(random: Random): Step {
   const gestures: Gesture[] = [];
-  // Row by row, back and forth, the way a hand works a band of color.
+  const stroke = (points: [number, number][], pressure: [number, number, number]) =>
+    gestures.push({
+      kind: 'stroke',
+      points: points.map(([x, y], i) => ({x, y, pressure: pressure[i] ?? 0.6})),
+    });
+
+  // The light first, with the brush clean: each warm drop in the clearing is
+  // pulled up to the ground line and out to either side, then the pool is
+  // worked back and forth until it is one glow.
+  const warm = DROPS.filter(
+    (drop) => LIGHT.contains(drop.at) && (drop.paint === Y || drop.paint === W || drop.paint === O),
+  );
+  for (const at of tour(
+    random,
+    warm.map((drop) => drop.at),
+    {x: 6, y: 9.5},
+  )) {
+    stroke(
+      [
+        [at.x, at.y],
+        [at.x - 0.15, (at.y + horizon(at.x)) / 2],
+        [at.x - 0.05, horizon(at.x) - 0.05],
+      ],
+      [0.7, 0.85, 0.5],
+    );
+    for (const side of [-1, 1]) {
+      const reach = random.between(0.8, 1.2);
+      stroke(
+        [
+          [at.x, at.y],
+          [at.x + side * reach * 0.5, at.y - 0.12],
+          [at.x + side * reach, at.y - random.between(0, 0.25)],
+        ],
+        [0.7, 0.9, 0.5],
+      );
+    }
+  }
+  /** Short strokes across the pool at height `y`, rightward or, on the way back, leftward. */
+  const across = (y: number, from: number, to: number, back: boolean) => {
+    const way = back ? -1 : 1;
+    for (let along = 0; along < to - from - 0.2; along += 1.1) {
+      const x = back ? to - along : from + along;
+      const end = back ? Math.max(from, x - 1.25) : Math.min(to, x + 1.25);
+      stroke(
+        [
+          [x, y],
+          [x + way * 0.6, y + random.between(-0.06, 0.06)],
+          [end, y],
+        ],
+        [0.6, 0.8, 0.55],
+      );
+    }
+  };
+  for (let y = 9.15, pass = 0; y < 10.8; y += 0.32, pass++) {
+    const half = 2.2 * Math.sqrt(Math.max(0, 1 - ((y - 9.9) / 1.0) ** 2)) - 0.2;
+    if (half > 0.3)
+      across(Math.max(y, horizon(8.6) - 0.05), 8.6 - half, 8.6 + half, pass % 2 === 1);
+  }
+
+  // Then the greens and darks, row by row, back and forth, the way a hand
+  // works a band of color. A stroke stops at the edge of the path or the
+  // light, and the next one starts again on the far side of it.
+  gestures.push({kind: 'clean'});
+  const open = (p: Point) => !PATH.contains(p) && !LIGHT.contains(p);
   let row = 0;
   for (let y = 9.05; y < HEIGHT + 0.2; y += 0.36, row++) {
+    // The top row tucks up under the mist, so no canvas shows between them.
+    const on = (x: number) => ({x, y: Math.max(y, horizon(x) - 0.08)});
     const strokes: Gesture[] = [];
-    for (let x = -0.4; x < WIDTH + 0.4; x += random.between(1.2, 1.9)) {
+    let x = -0.4;
+    while (x < WIDTH + 0.4) {
+      if (!open(on(x))) {
+        x += 0.05;
+        continue;
+      }
       // A stroke runs off the edge of the canvas, but not far past it.
-      const length = Math.min(random.between(1.4, 2.2), WIDTH + 0.5 - x);
-      const rise = random.between(-0.12, 0.12);
-      // The top row tucks up under the mist, so no canvas shows between them.
-      const start = {x, y: Math.max(y, horizon(x) - 0.08)};
-      const points: StrokePoint[] = [
-        {...start, pressure: 0.6},
-        {x: x + length / 2, y: start.y + rise, pressure: 0.9},
-        {x: x + length, y: start.y + rise * 0.3, pressure: 0.55},
-      ];
-      if (points.some((p) => PATH.contains(p))) continue;
-      strokes.push({kind: 'stroke', points});
+      const goal = Math.min(x + random.between(1.4, 2.2), WIDTH + 0.5);
+      let end = x;
+      while (end < goal && open(on(end + 0.05))) end += 0.05;
+      if (end - x > 0.3) {
+        const rise = random.between(-0.12, 0.12);
+        const start = on(x);
+        strokes.push({
+          kind: 'stroke',
+          points: [
+            {...start, pressure: 0.6},
+            {x: (x + end) / 2, y: start.y + rise, pressure: 0.9},
+            {x: end, y: start.y + rise * 0.3, pressure: 0.55},
+          ],
+        });
+      }
+      // The next stroke starts back inside this one, unless this one stopped at an edge.
+      x = end < goal ? end + 0.05 : x + (end - x) * random.between(0.65, 0.85);
     }
     gestures.push(...(row % 2 ? strokes.reverse() : strokes));
   }
-  // Then the path, as a ribbon: short strokes along it, side by side across
-  // its width, carrying its warm drops up toward the clearing.
-  for (let t = 0.02; t < 0.97; t += 0.055) {
+  // Then the path, as a ribbon, with the brush wiped so it stays warm: short
+  // strokes along it, side by side across its width, carrying its warm drops
+  // up into the pool of light.
+  gestures.push({kind: 'clean'});
+  for (let t = 0.02; t < 0.9; t += 0.055) {
     const here = path(t);
     const ahead = path(Math.min(1, t + 0.07)).at;
     const dx = ahead.x - here.at.x;
     const dy = ahead.y - here.at.y;
     const length = Math.hypot(dx, dy) || 1;
-    const lanes = Math.max(1, Math.min(4, Math.round(here.width / 0.8)));
+    // Lanes close enough that the brush's bands overlap, so no strip down the middle is missed.
+    const lanes = Math.min(4, Math.ceil((here.width * 0.7) / 0.8) + 1);
     for (let lane = 0; lane < lanes; lane++) {
-      const across = lanes === 1 ? 0 : (lane / (lanes - 1) - 0.5) * here.width * 0.7;
+      const across = (lane / (lanes - 1) - 0.5) * here.width * 0.7;
       const x = here.at.x - (dy / length) * across;
       const y = here.at.y + (dx / length) * across;
       // No stroke runs on past the clearing into the mist.
@@ -558,20 +716,24 @@ function layGround(random: Random): Step {
     title: 'Lay in the ground',
     tool: 'flatBrush',
     paints: ['yellowOchre', 'burntSienna', 'sapGreen', 'phthaloGreen', 'marsBlack'],
-    note: 'A one-inch brush spreads the ground drops sideways: warm ochre and white where the path will catch the light, greens and black toward the edges.',
+    note: 'A one-inch brush, clean, spreads the warm drops in the clearing into a pool of light first; then, wiped, it lays the greens and black in around it, and runs the path up to the light.',
     gestures,
   };
 }
 
 function scrubAll(random: Random): Step {
   const sky = tour(random, scatter(random, SKY_POUNCE, 330, 0.45), MOON);
-  const ground = tour(random, scatter(random, GROUND, 110, 0.5), CLEARING);
+  const ground = tour(random, scatter(random, GROUND_POUNCE, 110, 0.5), {x: 8.6, y: 9.9});
   return {
     title: 'Pounce the scrubber',
     tool: 'scrubber',
     paints: [],
-    note: 'A steel-wool scrubber glued to a jar lid is pounced over everything while it is wet, from the light outward. It lifts paint and drops it again a pad-width away, breaking every brushstroke into a glittering stipple.',
-    gestures: [...pounce(random, sky, [0.72, 0.95]), ...pounce(random, ground, [0.72, 0.95])],
+    note: 'A steel-wool scrubber glued to a jar lid is pounced over everything while it is wet, from the light outward, and wiped before it goes from the sky to the ground. It lifts paint and drops it again a pad-width away, breaking every brushstroke into a glittering stipple.',
+    gestures: [
+      ...pounce(random, sky, [0.72, 0.95]),
+      {kind: 'clean'},
+      ...pounce(random, ground, [0.72, 0.95]),
+    ],
     pace: 2.2,
   };
 }
@@ -627,7 +789,8 @@ function scrubCanopy(random: Random): Step {
     if (near(at, MOON, 2) || random.next() > foliage(at)) continue;
     clumps.push(at);
   }
-  const leaves = {marsBlack: 2, phthaloGreen: 1, prussianBlue: 1};
+  const leaves = {prussianBlue: 2, phthaloGreen: 1.2, marsBlack: 0.8, burntUmber: 0.5};
+  const lighter = {phthaloGreen: 1, prussianBlue: 1, skyBlue: 1.2};
   const gestures: Gesture[] = [];
   // Each clump is one firm press, and often a light one beside it that
   // catches only the high points of the stipple: dense in the middle, lacy
@@ -637,24 +800,26 @@ function scrubCanopy(random: Random): Step {
     if (i % 3 === 0)
       gestures.push({
         kind: 'load',
-        mix: byHand(random, leaves, 0.35),
+        mix: byHand(random, i % 12 === 9 ? lighter : leaves, 0.35),
         amount: random.between(1.3, 2),
         keep: 0.15,
       });
-    gestures.push({kind: 'press', at, pressure: random.between(0.45, 0.8)});
+    // Pressed into wet paint, the pad lifts the sky's blue into its leaves.
+    gestures.push({kind: 'press', at, pressure: random.between(0.45, 0.8), pickup: 0.3});
     if (random.next() < 0.55)
       gestures.push({
         kind: 'press',
         at: {x: at.x + random.between(-0.6, 0.6), y: at.y + random.between(-0.45, 0.45)},
         pressure: random.between(0.25, 0.45),
         skim: 0.35,
+        pickup: 0.3,
       });
   });
   return {
     title: 'Pounce the leaves',
     tool: 'scrubber',
-    paints: ['marsBlack', 'phthaloGreen', 'prussianBlue'],
-    note: 'The scrubber again, now loaded with black and dark green, pounced along the top and down both sides so the trees frame the picture. Each press prints a clump of leaves, lighter where it barely touches.',
+    paints: ['prussianBlue', 'phthaloGreen', 'marsBlack', 'burntUmber', 'skyBlue'],
+    note: 'The scrubber again, now loaded with navy and dark green, pounced along the top and down both sides so the trees frame the picture. Each press prints a clump of leaves, lighter where it barely touches.',
     gestures,
     pace: 1.6,
   };
@@ -871,7 +1036,8 @@ function lightSpots(random: Random, count: number, avoidFox = true): Point[] {
       at = {x: random.between(0.3, WIDTH - 0.3), y: random.between(2.4, HEIGHT - 0.3)};
     }
     if (at.x < 0.2 || at.x > WIDTH - 0.2 || at.y < 0.2 || at.y > HEIGHT - 0.2) continue;
-    if (avoidFox && near(at, {x: FOX.x, y: FOX.y - 0.55 * FOX.scale}, 0.6 * FOX.scale)) continue;
+    // Close around the fox, as lights gather round the brightest thing, but never on it.
+    if (avoidFox && onFox(at, 0.25)) continue;
     if (near(at, MOON, MOON.radius * 2)) continue;
     spots.push(at);
   }
@@ -886,7 +1052,8 @@ function bundleFlowers(random: Random): Step {
     while (spots.length < count) {
       const at = {x: random.between(0.3, WIDTH - 0.3), y: random.between(9, HEIGHT - 0.2)};
       if (at.y < horizon(at.x) + 0.35 || fromPath(at) < 0.45) continue;
-      if (near(at, {x: FOX.x, y: FOX.y - 0.5}, 1.3)) continue;
+      // Up to the fox's edge; the fan of swabs never reaches under it.
+      if (onFox(at, 0.95)) continue;
       const lit = 1 - smoothstep(0.4, 3, fromPath(at));
       const foreground = smoothstep(horizon(at.x), HEIGHT, at.y);
       if (random.next() > 0.2 + 0.45 * foreground + 0.45 * lit) continue;
@@ -928,7 +1095,7 @@ function bundleFlowers(random: Random): Step {
     title: 'Stamp the flowers',
     tool: 'bundle',
     paints: ['cadmiumYellow', 'titaniumWhite'],
-    note: 'Twenty cotton swabs held in a rubber band and fanned out, dipped in yellow and stamped through the meadow: a scatter of small flowers with every press, thickest toward the light. Then a few in white.',
+    note: 'Twenty cotton swabs held in a rubber band and fanned out, dipped in yellow and stamped through the meadow, right up to where the fox will sit: a scatter of small flowers with every press, thickest toward the light. Then a few in white.',
     gestures,
     pace: 1.4,
   };
@@ -936,7 +1103,7 @@ function bundleFlowers(random: Random): Step {
 
 function swabFireflies(random: Random): Step {
   const gestures: Gesture[] = [];
-  const spots = tour(random, lightSpots(random, 110), CLEARING);
+  const spots = tour(random, lightSpots(random, 150), CLEARING);
   spots.forEach((at, i) => {
     const yellow = i % 5 < 2;
     if (i % 2 === 0) {
@@ -1014,37 +1181,44 @@ function linerEdges(random: Random, trees: Planted[]): Step {
 
 function cottonGlows(random: Random, spots: Point[]): Step {
   const gestures: Gesture[] = [];
+  // The cotton is dabbed off on a card first, so it is nearly dry: each press
+  // and twist leaves a small soft halo of fine rays, not a patch of paint.
   spots.forEach((at, i) => {
     if (i % 2 === 0)
       gestures.push({
         kind: 'load',
         mix: {titaniumWhite: 1},
-        amount: random.between(2.4, 3.4),
+        amount: random.between(0.9, 1.4),
         keep: 0.2,
       });
     gestures.push({
       kind: 'press',
       at,
-      pressure: random.between(0.4, 0.62),
+      pressure: random.between(0.45, 0.65),
       angle: random.between(0, 6.28),
       skim: 0.3,
-      twist: random.between(0.7, 1.25),
-      size: random.between(0.75, 1.25),
+      twist: random.between(0.9, 1.3),
+      size: random.between(0.45, 0.75),
     });
   });
   return {
     title: 'Twist the glows',
     tool: 'cotton',
     paints: ['titaniumWhite'],
-    note: 'The cotton ball, with a little white, pressed and twisted: the fibers drag the paint out in fine rays, and the brightest fireflies get a halo.',
+    note: 'The cotton ball, with a little white dabbed off on a card until it is nearly dry, pressed and twisted: the fibers drag the paint out in fine rays, and the brightest fireflies get a halo.',
     gestures,
   };
 }
 
 function swabSparkles(random: Random, glows: Point[]): Step {
   const gestures: Gesture[] = [];
-  // A bright heart in every glow, then a few more small lights.
-  const spots = [...glows, ...tour(random, lightSpots(random, 28), CLEARING)];
+  // A bright heart in every glow, light on the ground round the fox's feet,
+  // then more small lights everywhere.
+  const atFeet = Array.from({length: 14}, () => ({
+    x: FOX.x + random.between(-0.6, 0.8),
+    y: FOX.y + random.between(-0.02, 0.22),
+  })).filter((p) => !onFox(p, 0.08));
+  const spots = [...glows, ...atFeet, ...tour(random, lightSpots(random, 40), CLEARING)];
   spots.forEach((at, i) => {
     if (i % 3 === 0) gestures.push({kind: 'load', mix: {titaniumWhite: 1}, amount: 5, keep: 0.1});
     gestures.push({
@@ -1066,33 +1240,36 @@ function swabSparkles(random: Random, glows: Point[]): Step {
 }
 
 export function moonlitWood(seed = 11): Score {
-  const random = createRandom(seed);
-  const trees = plant(random);
-  const glows = tour(random, lightSpots(random, 16), CLEARING);
+  // Each part of the picture draws from its own stream, so retouching one
+  // step leaves every other just as it was.
+  const hand = (part: number) => createRandom(seed * 100 + part);
+  const trees = plant(hand(0));
+  const lights = hand(1);
+  const glows = tour(lights, lightSpots(lights, 24), CLEARING);
   return {
     title: 'Fox at the edge of the wood',
     width: WIDTH,
     height: HEIGHT,
     steps: [
       dropPaint(),
-      spreadSky(random),
-      knifeMasses(random),
-      pullMist(random),
-      layGround(random),
-      scrubAll(random),
-      cottonMoon(random),
-      pullTrunks(random, trees),
-      scrubCanopy(random),
-      spatterStars(random),
-      combGrass(random),
-      linerLights(random),
+      spreadSky(hand(2)),
+      knifeMasses(hand(3)),
+      pullMist(hand(4)),
+      layGround(hand(5)),
+      scrubAll(hand(6)),
+      cottonMoon(hand(7)),
+      pullTrunks(hand(8), trees),
+      scrubCanopy(hand(9)),
+      spatterStars(hand(10)),
+      combGrass(hand(11)),
+      linerLights(hand(12)),
       dryEverything(),
-      bundleFlowers(random),
-      swabFireflies(random),
+      bundleFlowers(hand(13)),
+      swabFireflies(hand(14)),
       penFox(),
-      linerEdges(random, trees),
-      cottonGlows(random, glows),
-      swabSparkles(random, glows),
+      linerEdges(hand(15), trees),
+      cottonGlows(hand(16), glows),
+      swabSparkles(hand(17), glows),
     ],
   };
 }

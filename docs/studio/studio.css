@@ -19,6 +19,22 @@
   pointer-events: none;
 }
 
+/* Every step's note is in the caption, stacked in one cell, and only the
+   current one shows: the caption keeps the height of the longest, so the
+   painting above it never resizes between steps. */
+.caption {
+  display: grid;
+}
+
+.caption .note {
+  grid-area: 1 / 1;
+  visibility: hidden;
+}
+
+.caption .note[data-current] {
+  visibility: visible;
+}
+
 /* The steps: a numbered list of places to start from. */
 
 .steps {

@@ -102,6 +102,24 @@ test('the end is finished, with the picture to download', async () => {
   await page.close();
 });
 
+test('the painting keeps its size from step to step, however long the note', async () => {
+  const {page, errors} = await open();
+  const painting = page.getByRole('img', {name: /A wood at night/});
+  const sizes = new Set();
+  for (const start of await stepStarts(page)) {
+    await renderAt(page, start);
+    // The page lays the painting out again a frame after its box changes.
+    await page.evaluate(
+      () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))),
+    );
+    const {width, height} = await painting.boundingBox();
+    sizes.add(`${width} × ${height}`);
+  }
+  assert.equal(sizes.size, 1, `the painting was ${[...sizes].join(', then ')}`);
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
 test('a phone gets the picture and the transport without sideways scrolling', async () => {
   const {page, errors} = await open({width: 390, height: 844});
   const overflow = await page.evaluate(

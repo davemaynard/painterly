@@ -9,6 +9,7 @@ import {
   paints,
   reflectance,
 } from '../src/studio/engine/pigments.ts';
+import {passesOver} from '../src/studio/score/gestures.ts';
 import {moonlitWood} from '../src/studio/score/moonlit-wood.ts';
 import {compile, eventIndexAt, poseAt, stepAt} from '../src/studio/timeline.ts';
 import {tools} from '../src/studio/tools.ts';
@@ -77,6 +78,40 @@ test('each step of the score picks up its own tool, in order', () => {
   for (const step of score.steps) {
     assert.ok(step.gestures.length > 0, `${step.title} does something`);
     assert.ok(tools[step.tool], `${step.title} uses a tool on the table`);
+  }
+});
+
+test('a brush passes right over every drop before the scrubber comes, whatever the seed', () => {
+  for (const seed of [11, 1, 2, 3, 4, 5, 6, 7]) {
+    const score = moonlitWood(seed);
+    const [drops, ...after] = score.steps;
+    const brushes = after.slice(
+      0,
+      after.findIndex((step) => step.tool === 'scrubber'),
+    );
+    for (const drop of drops.gestures) {
+      // The knife pats its own drops out.
+      if (drop.mix.prussianBlue) continue;
+      const radius = (tools.tube.width / 2) * drop.size;
+      const parts = [
+        drop.at,
+        ...Array.from({length: 8}, (_, i) => ({
+          x: drop.at.x + Math.cos((i * Math.PI) / 4) * radius,
+          y: drop.at.y + Math.sin((i * Math.PI) / 4) * radius,
+        })),
+      ].filter((p) => p.x >= 0 && p.x <= score.width && p.y >= 0 && p.y <= score.height);
+      for (const part of parts) {
+        const brushed = brushes.some(({tool, gestures}) =>
+          gestures.some(
+            (g) =>
+              g.kind === 'stroke' &&
+              passesOver(g.points, part, tools[tool].width, tools[tool].depth),
+          ),
+        );
+        const where = `${drop.at.x.toFixed(2)}, ${drop.at.y.toFixed(2)}`;
+        assert.ok(brushed, `seed ${seed}: the drop at ${where} is brushed all over`);
+      }
+    }
   }
 });
 

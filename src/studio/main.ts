@@ -169,8 +169,14 @@ stages.innerHTML = timeline.steps
   )
   .join('');
 
+// The notes: every step's at once, stacked in one place with only the current
+// one showing, so the caption is always as tall as the longest note and the
+// painting above it never resizes from one step to the next.
+caption.innerHTML = score.steps.map((step) => `<span class="note">${step.note}</span>`).join('');
+
 const stepButtons = [...stepList.querySelectorAll<HTMLButtonElement>('button')];
 const stageMarks = [...stages.querySelectorAll<HTMLElement>('.stage')];
+const notes = [...caption.querySelectorAll<HTMLElement>('.note')];
 
 let shownStep = -1;
 const rail = $<HTMLElement>('.rail');
@@ -198,7 +204,9 @@ function render(state: PlayerState) {
       else button.removeAttribute('aria-current');
       button.toggleAttribute('data-done', i < state.step);
     });
-    caption.textContent = step.note;
+    notes.forEach((note, i) => {
+      note.toggleAttribute('data-current', i === state.step);
+    });
     keepInView(stepButtons[state.step]);
   }
   const words =

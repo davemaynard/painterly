@@ -150,6 +150,30 @@ export function arc(
   return points;
 }
 
+/**
+ * Whether a flat brush `width` inches across and `depth` deep, drawn along
+ * `points`, passes right over `at`: inside the band its bristles sweep, from
+ * where the head lands to where it lifts. The head's depth reaches a little
+ * behind every point it touches down on, but not on past the last, where it
+ * is already lifting away. The outer tenth of a flat head splays and barely
+ * touches, so it does not count.
+ */
+export function passesOver(points: Point[], at: Point, width: number, depth: number): boolean {
+  for (let i = 1; i < points.length; i++) {
+    const a = points[i - 1] as Point;
+    const b = points[i] as Point;
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const length = Math.hypot(dx, dy);
+    if (length === 0) continue;
+    const along = ((at.x - a.x) * dx + (at.y - a.y) * dy) / length;
+    const across = Math.abs((at.x - a.x) * dy - (at.y - a.y) * dx) / length;
+    const to = i === points.length - 1 ? length : length + depth / 2;
+    if (along >= -depth / 2 && along <= to && across <= (width / 2) * 0.9) return true;
+  }
+  return false;
+}
+
 export type CrissCross = {
   /** Where the hand starts; strokes work outward from here. */
   start: Point;
