@@ -113,6 +113,7 @@ const int COMB = 4;
 const int SWAB = 5;
 const int BUNDLE = 6;
 const int COTTON = 7;
+const int PEN = 8;
 
 uniform int uKind;
 /** Fixed for the life of a tool: which bristles clump, which comb teeth hold paint. */
@@ -227,12 +228,15 @@ float comb(vec2 q) {
   float off = abs(fract(x) - 0.5);
   float tip = 1.0 - smoothstep(0.3, 1.0, abs(q.y));
   uint seed = hash(uint(int(tooth)), uint(uStrokeSeed));
-  float held = 0.35 + 0.65 * unit(seed);
-  // As the comb lifts, each tooth leaves the canvas at its own moment, so the
-  // blades come out different lengths.
+  // Paint clings to some teeth and not others; a dry tooth leaves no blade.
+  float held = step(0.25, unit(seed)) * (0.45 + 0.55 * unit(hash(seed, 7u)));
+  // The comb meets the canvas a little tilted, so its teeth touch down one by
+  // one, and as it lifts each leaves at its own moment: the blades start at
+  // different heights and come out different lengths.
+  float lands = smoothstep(0.0, 0.06, mix(0.82, 1.05, unit(hash(seed, 5u))) - uPressure);
   float stays = smoothstep(0.0, 0.08, uPressure - mix(0.12, 0.7, unit(hash(seed, 3u))));
   float width = uShape.y * (0.35 + 0.65 * uPressure);
-  return (1.0 - smoothstep(width * 0.5, width, off)) * tip * held * stays;
+  return (1.0 - smoothstep(width * 0.5, width, off)) * tip * held * lands * stays;
 }
 
 // The cotton tip of a swab: a dome with a fuzzy rim.
@@ -244,17 +248,19 @@ float swabTip(vec2 q, uint seed) {
   return body * (0.78 + 0.22 * noise2(q * 5.0, seed + 3u));
 }
 
-// A bundle of swabs held together and fanned out at the tips. Each tip flexes
-// a little differently every time the bundle is pressed.
+// A bundle of swabs held together and fanned out at the tips. Every time the
+// bundle is pressed the tips splay differently, and squash flatter or less,
+// so no two stamps print the same pattern.
 float bundle(vec2 q) {
   uint seed = uint(uDabSeed);
   float touch = 0.0;
   for (int i = 0; i < 24; i++) {
     if (i >= uSwabCount) break;
     vec3 swab = uSwabs[i];
-    vec2 flex = (vec2(random(seed, uint(i) * 2u), random(seed, uint(i) * 2u + 1u)) - 0.5) * 0.06;
+    vec2 flex = (vec2(random(seed, uint(i) * 2u), random(seed, uint(i) * 2u + 1u)) - 0.5) * 0.24;
+    float squash = mix(0.75, 1.2, random(seed, uint(i) + 200u));
     float lands = step(0.35, random(seed, uint(i) + 100u));
-    touch = max(touch, lands * swabTip((q - swab.xy - flex) / swab.z, seed + uint(i)));
+    touch = max(touch, lands * swabTip((q - swab.xy - flex) / (swab.z * squash), seed + uint(i)));
   }
   return touch;
 }
@@ -278,6 +284,12 @@ float cotton(vec2 q) {
   return touch;
 }
 
+// The felt nib of a paint pen: a firm round point, the same width however
+// hard it is pressed, wet all the way across.
+float penNib(vec2 q) {
+  return 1.0 - smoothstep(0.8, 1.0, length(q));
+}
+
 /**
  * The outline of the contact without its texture: everywhere the tool's body
  * reaches. Paint standing proud of the surface meets the whole body, not just
@@ -289,8 +301,10 @@ float reach(vec2 q) {
   if (uKind == ROUND) return 1.0 - smoothstep(0.5, 1.0, length(q));
   if (uKind == KNIFE) return knifeBlade(q);
   if (uKind == SCRUBBER) return 1.0 - smoothstep(0.5 + 0.35 * uPressure, 1.0, length(q));
+  if (uKind == PEN) return penNib(q);
   return 0.0;
 }
+
 
 /** How hard the tool presses paint at q, before the canvas's own relief is considered. */
 float footprint(vec2 q) {
@@ -303,6 +317,7 @@ float footprint(vec2 q) {
   if (uKind == SWAB) return swabTip(q, uint(uDabSeed));
   if (uKind == BUNDLE) return bundle(q);
   if (uKind == COTTON) return cotton(q);
+  if (uKind == PEN) return penNib(q);
   return 0.0;
 }
 `;
@@ -388,6 +403,8 @@ uniform float uScrape;
 uniform float uChurn;
 /** How strongly the tool, lifting away, draws wet paint up into peaks where it touched. */
 uniform float uPull;
+/** Of the wet paint under a brush's bristles, the share they carry forward with each touch. */
+uniform float uDrag;
 
 /** A canvas point in the tool's frame. */
 vec2 toolFrame(vec2 p) {
@@ -424,13 +441,44 @@ float relief(vec2 p, float press) {
   return smoothstep(level - 0.18, level + 0.18, proud);
 }
 
-struct Touch { float lay; float lift; float reach; };
+/** Height of the dry paint and canvas at a point, without anything still wet on it. */
+float dryHeight(vec2 p) {
+  float paint = texture(uDry, p / uCanvas).a;
+  return paint + weaveRelief(p, paint);
+}
+
+/**
+ * How thick a pen's film is at p. Its paint is fluid and settles: it runs
+ * into the hollows of the dry paint beneath and thins over the ridges, so
+ * the film's top comes out smooth however textured the ground under it.
+ */
+float penFilm(vec2 p) {
+  float around = 0.25 * (dryHeight(p + vec2(4.0, 0.0)) + dryHeight(p - vec2(4.0, 0.0))
+    + dryHeight(p + vec2(0.0, 4.0)) + dryHeight(p - vec2(0.0, 4.0)));
+  return max(0.3 * uLevel, uLevel + around - dryHeight(p));
+}
+
+/**
+ * The thickness the tool levels paint to at q. A blade is flat and leaves a
+ * plateau. A brush is not: its clumps of bristles scrape deeper than the gaps
+ * between them, and a lighter touch rides higher, so a blob of paint under a
+ * brush is dragged out in ridges along the stroke instead of shaved flat to
+ * its own outline.
+ */
+float levelAt(vec2 q, vec2 p) {
+  if (uKind == PEN) return penFilm(p);
+  if (uKind != FLAT && uKind != ROUND) return uLevel;
+  float clumps = bristles(q.x, max(uShape.x, 4.0));
+  return uLevel * mix(1.3, 0.75, clumps) * mix(1.2, 0.9, uPressure);
+}
+
+struct Touch { float lay; float lift; float reach; float level; };
 
 /** How strongly the tool lays paint down and lifts it, at a point of contact. */
 Touch touchAt(vec2 q, vec2 p) {
   float press = footprint(q);
   press *= relief(p, press);
-  Touch touch = Touch(press, press, max(press, reach(q)));
+  Touch touch = Touch(press, press, max(press, reach(q)), levelAt(q, p));
   if (uKind == KNIFE) {
     // Under the flat of the blade paint is lifted; at its edge it is left behind.
     float rim = 1.0 - smoothstep(0.0, 0.18, knifeEdge(q));
@@ -448,6 +496,15 @@ Touch touchAt(vec2 q, vec2 p) {
 struct Exchange { float laid; float fromTop; float fromUnder; float churned; };
 
 Exchange exchange(Touch touch, float onTool, Layer below, Layer fresh) {
+  if (uKind == PEN) {
+    // A paint pen's nib is fed from the barrel as fast as it lets paint go,
+    // and wets the canvas to an even film wherever its face touches; only the
+    // very rim of the nib is soft. Where the film is already full, another
+    // pass adds nothing. It lifts nothing.
+    float film = max(0.0, touch.level - (fresh.v + below.v));
+    float wets = smoothstep(0.2, 0.7, touch.lay);
+    return Exchange(clamp(wets * uDeposit, 0.0, 1.0) * film, 0.0, 0.0, 0.0);
+  }
   float room = clamp(1.0 - onTool / uCapacity, 0.0, 1.0);
   float wetTop = fresh.v * fresh.wet;
   float wetUnder = below.v * below.wet;
@@ -455,7 +512,7 @@ Exchange exchange(Touch touch, float onTool, Layer below, Layer fresh) {
   float lifted = clamp(touch.lift * uPickup, 0.0, 1.0) * wet * room;
   if (uLevel >= 0.0) {
     float thickness = fresh.v + below.v;
-    float excess = max(0.0, thickness - uLevel);
+    float excess = max(0.0, thickness - touch.level);
     float wetShare = thickness > 1e-6 ? wet / thickness : 0.0;
     lifted = max(lifted, clamp(touch.reach * uScrape, 0.0, 1.0) * excess * wetShare);
   }
@@ -471,6 +528,44 @@ Exchange exchange(Touch touch, float onTool, Layer below, Layer fresh) {
 const HEADER = '#version 300 es\n';
 
 /**
+ * Bristles moving through wet paint carry some of it with them. Each touch
+ * moves a share of the wet paint under the brush forward along the stroke,
+ * a little past its front edge, and brings in what the bristles were holding
+ * just behind; what leaves one point arrives at the next. A drop that a brush
+ * runs through is dragged out into the stroke rather than keeping its outline.
+ */
+const DRAG = /* glsl */ `
+/**
+ * How far one touch carries paint, in texels: about half the contact's
+ * depth, never quite the same twice, so what a stroke carries smears out
+ * instead of landing in a row of copies.
+ */
+vec2 carried() {
+  float distance = 0.5 * uHalf.y * mix(0.55, 1.45, random(uint(uDabSeed), 41u));
+  return vec2(-uAxis.y, uAxis.x) * distance;
+}
+
+/** A layer with a share of its wet paint carried off, and a share of 'behind's brought in. */
+Layer dragLayer(Layer here, Layer behind, float gives, float takes) {
+  Layer kept = take(here, gives * here.v * here.wet);
+  return add(kept, behind, takes * behind.v * behind.wet, behind.wet);
+}
+
+// The whole body of the brush carries paint, not just its fullest bristles,
+// so a stroke shifts the paint under it evenly rather than plowing furrows.
+void drag(vec2 p, float body, inout Layer below, inout Layer fresh) {
+  if (uDrag <= 0.0) return;
+  vec2 from = p - carried();
+  float gives = clamp(body * uDrag, 0.0, 1.0);
+  float takes = clamp(reach(toolFrame(from)) * uDrag, 0.0, 1.0);
+  if (gives <= 0.0 && takes <= 0.0) return;
+  vec2 uv = from / uCanvas;
+  below = dragLayer(below, underLayerAt(uv), gives, takes);
+  fresh = dragLayer(fresh, topLayerAt(uv), gives, takes);
+}
+`;
+
+/**
  * The canvas side of a touch. Drawn over the rectangle the tool covers; for
  * each texel there, take paint from the tool and give some of what was there.
  */
@@ -481,6 +576,7 @@ uniform sampler2D uToolPigment;
 uniform sampler2D uToolScatter;
 ${FOOTPRINT}
 ${EXCHANGE}
+${DRAG}
 layout(location = 0) out vec4 outPigment;
 layout(location = 1) out vec4 outScatter;
 layout(location = 2) out vec4 outTopPigment;
@@ -494,9 +590,15 @@ void main() {
   writeLayer(fresh, outTopPigment, outTopScatter);
 
   vec2 q = toolFrame(gl_FragCoord.xy);
-  if (abs(q.x) > 1.0 || abs(q.y) > 1.0) return;
+  // Dragged paint can land just past the front of the contact.
+  if (abs(q.x) > 1.0 || abs(q.y) > (uDrag > 0.0 ? 1.5 : 1.0)) return;
   Touch touch = touchAt(q, gl_FragCoord.xy);
-  if (touch.lay <= 0.0 && touch.reach <= 0.0) return;
+  if (touch.lay <= 0.0 && touch.reach <= 0.0) {
+    drag(gl_FragCoord.xy, 0.0, below, fresh);
+    writeLayer(below, outPigment, outScatter);
+    writeLayer(fresh, outTopPigment, outTopScatter);
+    return;
+  }
 
   vec2 toolUv = q * 0.5 + 0.5;
   Layer onTool = layer(texture(uToolPigment, toolUv), vec4(texture(uToolScatter, toolUv).rgb, 1.0));
@@ -516,6 +618,7 @@ void main() {
     below = Layer(below.k * mix(1.0, raise, below.wet), below.s * mix(1.0, raise, below.wet), below.v * mix(1.0, raise, below.wet), below.wet);
     fresh = Layer(fresh.k * mix(1.0, raise, fresh.wet), fresh.s * mix(1.0, raise, fresh.wet), fresh.v * mix(1.0, raise, fresh.wet), fresh.wet);
   }
+  drag(gl_FragCoord.xy, reach(q), below, fresh);
   writeLayer(below, outPigment, outScatter);
   writeLayer(fresh, outTopPigment, outTopScatter);
 }
@@ -545,13 +648,24 @@ void main() {
   vec4 toolPigment = texelFetch(uToolPigment, texel, 0);
   vec4 toolScatter = texelFetch(uToolScatter, texel, 0);
   if (uShare > 0.0) {
+    // Across to the neighboring bristles, and along each bristle's length, so
+    // a shape the brush picks up blurs into its load instead of being printed
+    // again at every touch.
     ivec2 left = ivec2(max(texel.x - 1, 0), texel.y);
     ivec2 right = ivec2(min(texel.x + 1, size.x - 1), texel.y);
-    toolPigment = mix(toolPigment, 0.5 * (texelFetch(uToolPigment, left, 0) + texelFetch(uToolPigment, right, 0)), uShare);
-    toolScatter = mix(toolScatter, 0.5 * (texelFetch(uToolScatter, left, 0) + texelFetch(uToolScatter, right, 0)), uShare);
+    ivec2 back = ivec2(texel.x, max(texel.y - 1, 0));
+    ivec2 front = ivec2(texel.x, min(texel.y + 1, size.y - 1));
+    vec4 nearPigment = 0.25 * (texelFetch(uToolPigment, left, 0) + texelFetch(uToolPigment, right, 0)
+      + texelFetch(uToolPigment, back, 0) + texelFetch(uToolPigment, front, 0));
+    vec4 nearScatter = 0.25 * (texelFetch(uToolScatter, left, 0) + texelFetch(uToolScatter, right, 0)
+      + texelFetch(uToolScatter, back, 0) + texelFetch(uToolScatter, front, 0));
+    toolPigment = mix(toolPigment, nearPigment, uShare);
+    toolScatter = mix(toolScatter, nearScatter, uShare);
   }
   outPigment = toolPigment;
   outScatter = toolScatter;
+  // A pen's barrel refills its nib as fast as the nib lets paint go.
+  if (uKind == PEN) return;
 
   vec2 q = vUv * 2.0 - 1.0;
   vec2 p = canvasPoint(q);
@@ -602,7 +716,9 @@ void main() {
   float clumps = bristled ? bristles(q.x, max(uShape.x, 4.0)) : 1.0;
   float speckle = noise2(q * 7.0, uint(uLoadSeed));
   float heel = bristled ? smoothstep(-1.0, -0.2, q.y) : 1.0;
-  float share = mix(1.0, (0.45 + 0.75 * clumps) * (0.75 + 0.5 * speckle), uUneven) * heel;
+  // A pen's nib is soaked evenly from the barrel.
+  float uneven = uKind == PEN ? 0.0 : uUneven;
+  float share = mix(1.0, (0.45 + 0.75 * clumps) * (0.75 + 0.5 * speckle), uneven) * heel;
   float thickness = uAmount * share;
   outPigment = oldPigment + vec4(uAbsorption * thickness, thickness);
   outScatter = vec4(oldScatter.rgb + uScattering * thickness, 0.0);

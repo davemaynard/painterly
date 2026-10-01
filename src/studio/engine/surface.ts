@@ -34,7 +34,8 @@ export type ToolKind =
   | 'comb'
   | 'swab'
   | 'bundle'
-  | 'cotton';
+  | 'cotton'
+  | 'pen';
 
 const KIND_CODES: Record<ToolKind, number> = {
   flat: 0,
@@ -45,6 +46,7 @@ const KIND_CODES: Record<ToolKind, number> = {
   swab: 5,
   bundle: 6,
   cotton: 7,
+  pen: 8,
 };
 
 /** What a tool is, physically, for the passes that use it. */
@@ -62,13 +64,18 @@ export type ToolBody = {
   pickup: number;
   /** The thickness of paint, in 0.1 mm, past which it lifts nothing more. */
   capacity: number;
-  /** For a blade or a loaded brush: the thickness it levels paint to under full pressure, and how hard it scrapes. */
+  /**
+   * For a blade or a loaded brush: the thickness it levels paint to under full
+   * pressure, and how hard it scrapes. For a pen: the film its nib lays.
+   */
   level?: number;
   scrape?: number;
   /** Of the fresh paint under it, the share it stirs into the paint beneath per touch. */
   churn: number;
   /** How strongly it draws wet paint up into peaks where it touched, lifting away. */
   pull?: number;
+  /** For a brush: of the wet paint under its bristles, the share they carry forward with each touch. */
+  drag?: number;
   /** How much paint creeps between neighboring bristles per touch, 0..1. */
   share: number;
   /** The tool's own color where it holds no paint, as sRGB hex. */
@@ -288,6 +295,7 @@ export function createSurface(
     program.set('uScrape', touch.scrape ?? body.scrape ?? 0);
     program.set('uChurn', body.churn);
     program.set('uPull', body.pull ?? 0);
+    program.set('uDrag', body.drag ?? 0);
     program.set('uWeavePitch', weavePitch);
   };
 
@@ -375,13 +383,14 @@ export function createSurface(
   };
 
   const touch = (tool: Tool, contact: Touch) => {
+    // A brush that drags paint carries it a little past its front edge.
     const rect = bounds(
       contact.x,
       contact.y,
       contact.axisX,
       contact.axisY,
       contact.halfAcross,
-      contact.halfAlong,
+      contact.halfAlong * (tool.body.drag ? 1.5 : 1),
     );
     if (!rect) return;
 

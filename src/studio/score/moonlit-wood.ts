@@ -1,20 +1,22 @@
 // The painting this page plays: a wood at night, a low moon off to the left,
 // a path winding up from the corner to a clearing that holds the light, and a
 // fox sitting at its edge. The picture is our own; the method is Jay Lee's,
-// step for step, from his video "Iron scrubber painting technique / Painting
-// deep in the woods" (2025): paint dropped straight onto the canvas and spread
+// from his video "Iron scrubber painting technique / Painting deep in the
+// woods" (2025): paint dropped straight onto the canvas and spread
 // with a wide brush, dark masses patted in with a knife, everything pounced
 // with a steel-wool scrubber while wet, trunks pulled up with a flat brush,
-// then a comb, a hair dryer, a cotton ball and cotton swabs.
+// then a comb, a hair dryer, a cotton ball, cotton swabs and a paint pen.
 //
 // Everything is in inches on a 16 × 12 canvas, from the top left.
 import {createRandom, type Random} from '../../random.ts';
 import type {Mix, PaintName} from '../engine/pigments.ts';
+import {tools} from '../tools.ts';
 import {
   arc,
   combFlick,
   crissCross,
   flick,
+  hatch,
   outline,
   pats,
   pounce,
@@ -73,12 +75,27 @@ const pathSide = (side: -1 | 1): Point[] =>
 
 const PATH: Region = outline([...pathSide(-1), ...pathSide(1).reverse()]);
 
-const SKY: Region = outline([
+/** How far a point is outside the path's edge, in inches; below 0 on it. */
+function fromPath(at: Point): number {
+  let nearest = Number.POSITIVE_INFINITY;
+  for (let i = 0; i <= 40; i++) {
+    const here = path(i / 40);
+    nearest = Math.min(nearest, Math.hypot(at.x - here.at.x, at.y - here.at.y) - here.width / 2);
+  }
+  return nearest;
+}
+
+/**
+ * Where the scrubber is pounced on the sky: high enough that the pad, 2.6
+ * inches across, stops short of the wet ground and never carries its green
+ * up into the light.
+ */
+const SKY_POUNCE: Region = outline([
   {x: -0.2, y: -0.2},
   {x: WIDTH + 0.2, y: -0.2},
   ...Array.from({length: 33}, (_, i) => {
     const x = WIDTH + 0.2 - (i / 32) * (WIDTH + 0.4);
-    return {x, y: horizon(x) + 0.1};
+    return {x, y: horizon(x) - 1.1};
   }),
 ]);
 
@@ -96,6 +113,20 @@ const GROUND: Region = outline([
 
 const near = (a: Point, b: Point, distance: number) => Math.hypot(a.x - b.x, a.y - b.y) < distance;
 
+const smoothstep = (from: number, to: number, x: number) => {
+  const t = Math.min(1, Math.max(0, (x - from) / (to - from)));
+  return t * t * (3 - 2 * t);
+};
+
+/** A mix as a hand puts it together on the palette: never quite the same twice. */
+function byHand(random: Random, mix: Mix, spread = 0.25): Mix {
+  const varied: Mix = {};
+  for (const [paint, parts] of Object.entries(mix) as [PaintName, number][]) {
+    varied[paint] = parts * random.between(1 - spread, 1 + spread);
+  }
+  return varied;
+}
+
 // ─── The drops ──────────────────────────────────────────────────────────────
 //
 // Before any brush, every paint the picture needs goes onto the canvas as a
@@ -104,7 +135,19 @@ const near = (a: Point, b: Point, distance: number) => Math.hypot(a.x - b.x, a.y
 // where the woods go dark; a row of small blues for the mist; earth colors
 // and greens for the ground, warm toward the path.
 
-type Drop = {at: Point; paint: PaintName; size?: number};
+type Drop = {at: Point; paint: PaintName; size: number; angle: number};
+
+/**
+ * A hand never squeezes two drops alike: each lands a little off its mark, a
+ * little bigger or smaller, the tube lifting away at its own angle.
+ */
+const squeeze = createRandom(29);
+const squeezed = (x: number, y: number, paint: PaintName, size: number, slip = 0.2): Drop => ({
+  at: {x: x + squeeze.between(-slip, slip), y: y + squeeze.between(-slip, slip) * 0.75},
+  paint,
+  size: size * squeeze.between(0.82, 1.18),
+  angle: squeeze.between(-0.45, 0.45),
+});
 
 // One letter per tube, so the rows below can be read across like the canvas.
 const W: PaintName = 'titaniumWhite';
@@ -124,7 +167,7 @@ const SKY_ROWS: [number, [number, PaintName][]][] = [
 const MIST_ROW: Drop[] = Array.from({length: 18}, (_, i) => {
   const x = 0.5 + i * 0.885;
   const white = Math.abs(x - CLEARING.x) < 0.9;
-  return {at: {x, y: 7.45}, paint: white ? W : S, size: 0.72};
+  return squeezed(x, 7.45, white ? W : S, 0.72, 0.12);
 });
 
 const G: PaintName = 'sapGreen';
@@ -154,14 +197,17 @@ const PATH_DROPS: Drop[] = (
     [0.83, 'titaniumWhite'],
     [0.92, 'titaniumWhite'],
   ] as [number, PaintName][]
-).map(([t, paint]) => ({at: path(t).at, paint}));
+).map(([t, paint]) => squeezed(path(t).at.x, path(t).at.y, paint, 1, 0.15));
 
 const DROPS: Drop[] = [
   ...SKY_ROWS.flatMap(([y, row]) =>
-    row.map(([x, paint]) => ({at: {x, y}, paint, size: paint === W ? 1.3 : 1})),
+    row.map(([x, paint]) => squeezed(x, y, paint, paint === W ? 1.3 : 1)),
   ),
   ...MIST_ROW,
-  ...GROUND_ROWS.flatMap(([y, row]) => row.map(([x, paint]) => ({at: {x, y}, paint})))
+  // Ground drops only ever land a little low, out of reach of the mist brush.
+  ...GROUND_ROWS.flatMap(([y, row]) =>
+    row.map(([x, paint]) => squeezed(x, y + 0.09, paint, 1, 0.12)),
+  )
     // The path's own drops take these places.
     .filter((drop) => PATH_DROPS.every((p) => !near(p.at, drop.at, 0.6))),
   ...PATH_DROPS,
@@ -250,7 +296,7 @@ const trunkX = (tree: Planted, y: number) => tree.base.x + tree.lean * (tree.bas
 
 // ─── The fox ────────────────────────────────────────────────────────────────
 //
-// Drawn in white with the liner: sitting, side on, facing right into the
+// Drawn with a white paint pen: sitting, side on, facing right into the
 // clearing, ears up, its brush of a tail curled round its front paws. Points
 // are in units of the fox's height, from the ground beneath its chest.
 
@@ -304,94 +350,58 @@ const FOX_EARS: [number, number][][] = [
 
 /** The middle line of the tail, from where it leaves the haunch to its tip, and its thickness along the way. */
 const FOX_TAIL: [number, number, number][] = [
-  [-0.3, -0.04, 0.06],
-  [-0.26, 0.03, 0.09],
-  [-0.12, 0.07, 0.1],
-  [0.04, 0.08, 0.1],
-  [0.18, 0.07, 0.085],
-  [0.3, 0.045, 0.06],
-  [0.4, 0.015, 0.03],
-  [0.45, 0, 0.01],
+  [-0.3, -0.04, 0.07],
+  [-0.26, 0.03, 0.11],
+  [-0.12, 0.07, 0.135],
+  [0.04, 0.08, 0.14],
+  [0.18, 0.07, 0.12],
+  [0.3, 0.045, 0.09],
+  [0.4, 0.015, 0.05],
+  [0.46, -0.005, 0.015],
 ];
 
-const FOX_EYE: [number, number] = [0.17, -0.795];
-const FOX_NOSE: [number, number] = [0.355, -0.75];
+/** The lean of the fox's back, haunch to nape: the way the pen fills the body. */
+const BACK_LEAN = Math.atan2(-0.56, 0.28);
 
 function foxGestures(): Gesture[] {
   const at = ([x, y]: [number, number]): Point => ({
     x: FOX.x + x * FOX.scale,
     y: FOX.y + y * FOX.scale,
   });
-  const white = (gestures: Gesture[]) => withReloads(gestures, 3, {titaniumWhite: 1}, 9);
-  const line = (points: [number, number][], pressure: [number, number]): Gesture => ({
+  const line = (points: [number, number][]): Gesture => ({
     kind: 'stroke',
     points: smooth(
-      points.map((p, i) => ({
-        ...at(p),
-        pressure: pressure[0] + (pressure[1] - pressure[0]) * (i / Math.max(1, points.length - 1)),
-      })),
+      points.map((p) => ({...at(p), pressure: 0.8})),
       0.03,
     ),
   });
+  const between = ([ax, ay]: [number, number], [bx, by]: [number, number]): [number, number] => [
+    (ax + bx) / 2,
+    (ay + by) / 2,
+  ];
 
-  // The body filled with short strokes that follow its lean, each clipped to
-  // the outline, side by side and overlapping, the way a liner fills a shape.
-  const fill: Gesture[] = [];
-  const body = outline(FOX_BODY.map(at));
-  const {left, right, top, bottom} = body.bounds;
-  for (let x = left + 0.01; x < right; x += 0.018) {
-    let start: number | null = null;
-    for (let y = bottom + 0.01; y >= top - 0.02; y -= 0.008) {
-      const inside = body.contains({x, y});
-      if (inside && start === null) start = y;
-      if (!inside && start !== null) {
-        // Long runs are filled in pieces of at most 0.4 inch, overlapping.
-        const pieces = Math.max(1, Math.ceil((start - y) / 0.4));
-        const piece = (start - y) / pieces;
-        for (let k = 0; k < pieces; k++) {
-          const from = start - k * piece + (k > 0 ? 0.03 : 0);
-          const to = start - (k + 1) * piece;
-          if (from - to < 0.03) continue;
-          fill.push({
-            kind: 'stroke',
-            points: [
-              {x, y: from, pressure: 0.85},
-              {x: x + 0.004, y: (from + to) / 2, pressure: 0.9},
-              {x: x + 0.003, y: to + 0.004, pressure: 0.75},
-            ],
-          });
-        }
-        start = null;
-      }
-    }
-  }
-  // The edge once round; the ears, filled; the tail, as sweeps laid side by
-  // side across its thickness, thinning to the tip.
+  // Round the edge first, the way a pen finds a shape; then the body filled
+  // solid with lines back and forth along the lean of the back.
   const edge = [
-    line(FOX_BODY.slice(0, 15), [0.55, 0.5]),
-    line([...FOX_BODY.slice(14), FOX_BODY[0] as [number, number]], [0.5, 0.6]),
+    line(FOX_BODY.slice(0, 15)),
+    line([...FOX_BODY.slice(14), FOX_BODY[0] as [number, number]]),
   ];
+  const fill = hatch(outline(FOX_BODY.map(at)), BACK_LEAN, 0.045, tools.pen.width / 2);
+  // Each ear from both corners of its base and its middle up to the tip; the
+  // tail as sweeps laid side by side across its thickness, thinning to the tip.
   const ears = FOX_EARS.flatMap(([base, tip, other]) => {
-    const [bx, by] = base as [number, number];
-    const [ox, oy] = other as [number, number];
-    return [0.15, 0.4, 0.65, 0.85].map((t) =>
-      line([[bx + (ox - bx) * t, by + (oy - by) * t], tip as [number, number]], [0.7, 0.2]),
-    );
+    const corners = [base, other] as [number, number][];
+    const point = tip as [number, number];
+    return [
+      line([corners[0] as [number, number], point]),
+      line([corners[1] as [number, number], point]),
+      line([between(corners[0] as [number, number], corners[1] as [number, number]), point]),
+    ];
   });
-  const tail = [-0.85, -0.55, -0.25, 0, 0.25, 0.55, 0.85].map((across) =>
-    line(
-      FOX_TAIL.map(([x, y, thickness]) => [x, y + across * thickness * 0.5] as [number, number]),
-      [0.85, 0.3],
-    ),
+  const tail = [-0.75, -0.5, -0.25, 0, 0.25, 0.5, 0.75].map((across) =>
+    line(FOX_TAIL.map(([x, y, thickness]) => [x, y + across * thickness * 0.5])),
   );
-  // A dark eye and nose, so it reads as a face.
-  const face: Gesture[] = [
-    {kind: 'clean'},
-    {kind: 'load', mix: {prussianBlue: 1, marsBlack: 1}, amount: 3},
-    {kind: 'press', at: at(FOX_EYE), pressure: 0.35},
-    {kind: 'press', at: at(FOX_NOSE), pressure: 0.3},
-  ];
-  return [...white([...fill, ...edge, ...ears, ...tail]), ...face];
+  return [...edge, ...fill, ...ears, ...tail];
 }
 
 // ─── The steps ──────────────────────────────────────────────────────────────
@@ -416,7 +426,8 @@ function dropPaint(): Step {
       kind: 'drop' as const,
       at: drop.at,
       mix: {[drop.paint]: 1},
-      size: drop.size ?? 1,
+      size: drop.size,
+      angle: drop.angle,
     })),
     pace: 2,
   };
@@ -474,7 +485,8 @@ function pullMist(random: Random): Step {
   const gestures: Gesture[] = [];
   for (let x = 0.4; x < WIDTH; x += random.between(0.45, 0.7)) {
     const top = random.between(5.6, 6.1);
-    const bottom = horizon(x) + 0.15;
+    // Down to just above the ground line, clear of the ground's drops.
+    const bottom = horizon(x) - 0.1;
     const down = random.next() < 0.6;
     const points: StrokePoint[] = [
       {x: x + random.between(-0.05, 0.05), y: down ? top : bottom, pressure: 0.55},
@@ -499,9 +511,11 @@ function layGround(random: Random): Step {
   for (let y = 9.05; y < HEIGHT + 0.2; y += 0.36, row++) {
     const strokes: Gesture[] = [];
     for (let x = -0.4; x < WIDTH + 0.4; x += random.between(1.2, 1.9)) {
-      const length = random.between(1.4, 2.2);
+      // A stroke runs off the edge of the canvas, but not far past it.
+      const length = Math.min(random.between(1.4, 2.2), WIDTH + 0.5 - x);
       const rise = random.between(-0.12, 0.12);
-      const start = {x, y: Math.max(y, horizon(x) + 0.05)};
+      // The top row tucks up under the mist, so no canvas shows between them.
+      const start = {x, y: Math.max(y, horizon(x) - 0.08)};
       const points: StrokePoint[] = [
         {...start, pressure: 0.6},
         {x: x + length / 2, y: start.y + rise, pressure: 0.9},
@@ -525,7 +539,11 @@ function layGround(random: Random): Step {
       const across = lanes === 1 ? 0 : (lane / (lanes - 1) - 0.5) * here.width * 0.7;
       const x = here.at.x - (dy / length) * across;
       const y = here.at.y + (dx / length) * across;
-      const reach = random.between(0.7, 1);
+      // No stroke runs on past the clearing into the mist.
+      const reach = Math.min(
+        random.between(0.7, 1),
+        Math.hypot(CLEARING.x - here.at.x, CLEARING.y - here.at.y),
+      );
       gestures.push({
         kind: 'stroke',
         points: [
@@ -546,7 +564,7 @@ function layGround(random: Random): Step {
 }
 
 function scrubAll(random: Random): Step {
-  const sky = tour(random, scatter(random, SKY, 330, 0.45), MOON);
+  const sky = tour(random, scatter(random, SKY_POUNCE, 330, 0.45), MOON);
   const ground = tour(random, scatter(random, GROUND, 110, 0.5), CLEARING);
   return {
     title: 'Pounce the scrubber',
@@ -563,7 +581,12 @@ function pullTrunks(random: Random, trees: Planted[]): Step {
   const order = [...trees].sort((a, b) => depthOrder(a.depth) - depthOrder(b.depth));
   for (const tree of order) {
     const paint = TRUNK_PAINT[tree.depth];
-    gestures.push({kind: 'load', mix: paint.mix, amount: paint.amount, keep: 0.2});
+    gestures.push({
+      kind: 'load',
+      mix: byHand(random, paint.mix),
+      amount: paint.amount * random.between(0.85, 1.15),
+      keep: 0.2,
+    });
     gestures.push(
       ...trunk(random, tree.base, tree.base.y + 0.4, {
         lean: tree.lean,
@@ -585,40 +608,53 @@ function pullTrunks(random: Random, trees: Planted[]): Step {
 
 const depthOrder = (depth: Depth) => (depth === 'far' ? 0 : depth === 'middle' ? 1 : 2);
 
-function scrubCanopy(random: Random, trees: Planted[]): Step {
-  const spots: Point[] = [];
-  for (const tree of trees) {
-    if (tree.depth === 'far' && random.next() < 0.5) continue;
-    const crowns = tree.depth === 'near' ? 2 : 1;
-    for (let i = 0; i < crowns; i++) {
-      const y = random.between(-0.5, tree.depth === 'near' ? 2 : 1.4);
-      spots.push({x: trunkX(tree, y) + random.between(-0.6, 0.6), y});
-    }
+/**
+ * How thick the leaves are at a point: heavy along the top and down both
+ * sides, so the trees frame the picture, and thinning toward the middle,
+ * where the moon and the light keep the sky open.
+ */
+function foliage(at: Point): number {
+  const fromSide = Math.min(at.x, WIDTH - at.x);
+  const sides = (1 - smoothstep(0.6, 4, fromSide)) * (1 - smoothstep(5.2, 8, at.y));
+  const top = 1 - smoothstep(0.3, 2.4, at.y);
+  return Math.max(sides, 0.8 * top);
+}
+
+function scrubCanopy(random: Random): Step {
+  const clumps: Point[] = [];
+  while (clumps.length < 30) {
+    const at = {x: random.between(-0.3, WIDTH + 0.3), y: random.between(-0.3, 8.4)};
+    if (near(at, MOON, 2) || random.next() > foliage(at)) continue;
+    clumps.push(at);
   }
-  const open = spots.filter((p) => !near(p, MOON, 1.8));
+  const leaves = {marsBlack: 2, phthaloGreen: 1, prussianBlue: 1};
   const gestures: Gesture[] = [];
-  // Each clump takes a couple of presses close together, so it is dense in
-  // the middle and ragged at its edges, with sky between the clumps.
-  tour(random, open, {x: 0, y: 0}).forEach((at, i) => {
-    if (i % 2 === 0)
+  // Each clump is one firm press, and often a light one beside it that
+  // catches only the high points of the stipple: dense in the middle, lacy
+  // at the edges, with sky between the clumps. The pad runs drier between
+  // loads, so no two clumps are the same weight.
+  tour(random, clumps, {x: 0, y: 0}).forEach((at, i) => {
+    if (i % 3 === 0)
       gestures.push({
         kind: 'load',
-        mix: {marsBlack: 2, phthaloGreen: 1, prussianBlue: 1},
-        amount: 2.2,
-        keep: 0.2,
+        mix: byHand(random, leaves, 0.35),
+        amount: random.between(1.3, 2),
+        keep: 0.15,
       });
-    gestures.push({kind: 'press', at, pressure: random.between(0.55, 0.8)});
-    gestures.push({
-      kind: 'press',
-      at: {x: at.x + random.between(-0.3, 0.3), y: at.y + random.between(-0.25, 0.25)},
-      pressure: random.between(0.4, 0.6),
-    });
+    gestures.push({kind: 'press', at, pressure: random.between(0.45, 0.8)});
+    if (random.next() < 0.55)
+      gestures.push({
+        kind: 'press',
+        at: {x: at.x + random.between(-0.6, 0.6), y: at.y + random.between(-0.45, 0.45)},
+        pressure: random.between(0.25, 0.45),
+        skim: 0.35,
+      });
   });
   return {
     title: 'Pounce the leaves',
     tool: 'scrubber',
     paints: ['marsBlack', 'phthaloGreen', 'prussianBlue'],
-    note: 'The scrubber again, now loaded with black and dark green, pounced at the tops of the trunks. Each press prints a clump of foliage, lighter where it barely touches.',
+    note: 'The scrubber again, now loaded with black and dark green, pounced along the top and down both sides so the trees frame the picture. Each press prints a clump of leaves, lighter where it barely touches.',
     gestures,
     pace: 1.6,
   };
@@ -643,52 +679,62 @@ function spatterStars(random: Random): Step {
 }
 
 function combGrass(random: Random): Step {
-  const gestures: Gesture[] = [{kind: 'load', mix: {phthaloGreen: 1, marsBlack: 1}, amount: 5}];
-  let count = 0;
-  for (let x = -0.4; x < WIDTH + 0.4; x += random.between(0.45, 0.8)) {
-    for (let row = 0; row < 3; row++) {
-      const y = horizon(x) + random.between(0.15, 0.6) + row * random.between(0.7, 1.1);
-      if (y > HEIGHT + 0.1) continue;
-      if ([-0.7, 0, 0.7].some((dx) => PATH.contains({x: x + dx, y}))) continue;
-      if (count++ % 4 === 0)
-        gestures.push({kind: 'load', mix: {phthaloGreen: 1, marsBlack: 1}, amount: 5, keep: 0.4});
-      gestures.push(
-        combFlick(
-          {x, y},
-          random.between(0.35, 0.5 + row * 0.3),
-          random.between(-0.35, 0.35),
-          random.between(-0.4, 0.4),
-        ),
-      );
-    }
-  }
-  // Grass caught by the light: a paler comb along the path and the clearing.
+  const tufts = scatter(random, GROUND, 170, 0.3).filter(
+    (at) =>
+      at.y > horizon(at.x) + 0.12 &&
+      at.y < HEIGHT + 0.05 &&
+      [-0.45, 0, 0.45].every((dx) => !PATH.contains({x: at.x + dx, y: at.y})),
+  );
+  /** 1 on the path's edge and in the clearing, falling to 0 in the shadows. */
+  const light = (at: Point) =>
+    Math.max(
+      1 - smoothstep(0.2, 2.6, fromPath(at)),
+      1 - smoothstep(0.8, 3, Math.hypot(at.x - CLEARING.x, at.y - CLEARING.y)),
+    );
+  const dark = tufts.filter((at) => light(at) < 0.25 && random.next() < 0.45);
+  const pale = tufts.filter((at) => !dark.includes(at));
+
+  const gestures: Gesture[] = [];
+  const comb = (at: Point, length: [number, number]) =>
+    gestures.push(
+      combFlick(
+        at,
+        random.between(...length),
+        random.between(-0.55, 0.55),
+        random.between(-0.45, 0.45),
+      ),
+    );
+  // A few dark blades first, where the ground is in shadow.
+  tour(random, dark, {x: 0, y: HEIGHT}).forEach((at, i) => {
+    if (i % 3 === 0)
+      gestures.push({
+        kind: 'load',
+        mix: byHand(random, {phthaloGreen: 1, marsBlack: 1}),
+        amount: 5,
+        keep: 0.3,
+      });
+    comb(at, [0.3, 0.6]);
+  });
+  // Then pale ones over them everywhere, whitest where the light reaches.
   gestures.push({kind: 'clean'});
-  for (let t = 0.1; t < 1; t += 0.11) {
-    for (const side of [-1, 1] as const) {
-      const edge = pathSide(side)[Math.round(t * 20)] as Point;
-      if (count++ % 3 === 0)
-        gestures.push({
-          kind: 'load',
-          mix: {sapGreen: 1, yellowOchre: 1, titaniumWhite: 1},
-          amount: 4,
-          keep: 0.2,
-        });
-      gestures.push(
-        combFlick(
-          {x: edge.x, y: edge.y + 0.15},
-          random.between(0.3, 0.55),
-          random.between(-0.25, 0.25),
-          random.between(-0.4, 0.4),
-        ),
-      );
+  tour(random, pale, {x: 0, y: HEIGHT}).forEach((at, i) => {
+    if (i % 3 === 0) {
+      const lit = light(at);
+      const mix =
+        lit > 0.55
+          ? {titaniumWhite: 5, sapGreen: 0.4, cadmiumYellow: 0.4}
+          : random.next() < 0.5
+            ? {titaniumWhite: 3, sapGreen: 1}
+            : {titaniumWhite: 3, sapGreen: 0.7, cadmiumYellow: 0.8};
+      gestures.push({kind: 'load', mix: byHand(random, mix), amount: 5, keep: 0.3});
     }
-  }
+    comb(at, [0.22, 0.5]);
+  });
   return {
     title: 'Comb the grass',
     tool: 'comb',
-    paints: ['phthaloGreen', 'marsBlack', 'sapGreen', 'yellowOchre'],
-    note: 'A fine comb with paint on its teeth, set down along the ground and flicked upward: a dozen blades of grass at a time. Dark first, then a paler mix where the path catches the light.',
+    paints: ['titaniumWhite', 'sapGreen', 'cadmiumYellow', 'phthaloGreen', 'marsBlack'],
+    note: 'A fine comb with paint on its teeth, set down on the ground and flicked upward: a dozen blades at a time. A few dark ones in the shadows first, then pale green and white over them, palest where the light reaches.',
     gestures,
   };
 }
@@ -761,36 +807,42 @@ function dryEverything(): Step {
 }
 
 function cottonMoon(random: Random): Step {
-  const gestures: Gesture[] = [{kind: 'load', mix: {titaniumWhite: 1}, amount: 7}];
-  for (let i = 0; i < 16; i++) {
+  const gestures: Gesture[] = [];
+  // Thin coats of white, dabbed over and over in one spot until the moon is
+  // solid, the cotton dipped again every few dabs so the wet blue under it
+  // never dulls the white.
+  for (let i = 0; i < 20; i++) {
+    if (i % 5 === 0) gestures.push({kind: 'load', mix: {titaniumWhite: 1}, amount: 3, keep: 0.25});
     const angle = random.between(0, Math.PI * 2);
-    const out = random.between(0, MOON.radius * 0.4);
+    const out = random.between(0, MOON.radius * 0.35);
     gestures.push({
       kind: 'press',
       at: {x: MOON.x + Math.cos(angle) * out, y: MOON.y + Math.sin(angle) * out},
-      pressure: random.between(0.8, 0.95),
+      pressure: random.between(0.75, 0.95),
       angle: random.between(0, 6.28),
     });
-    if (i === 7) gestures.push({kind: 'load', mix: {titaniumWhite: 1}, amount: 6, keep: 0.4});
   }
-  // The glow: what is left on the cotton, dabbed lightly around, catching only the stipple's peaks.
+  // The glow: what is left on the cotton, dabbed around the moon and outward,
+  // lighter and smaller the further it goes, catching only the stipple's peaks.
+  gestures.push({kind: 'load', mix: {titaniumWhite: 1}, amount: 1.4, keep: 0.5});
   for (let i = 0; i < 36; i++) {
-    if (i % 9 === 0) gestures.push({kind: 'load', mix: {titaniumWhite: 1}, amount: 1.3, keep: 0.5});
+    const far = random.next();
     const angle = random.between(0, Math.PI * 2);
-    const out = random.between(MOON.radius * 1.1, MOON.radius * 2.8);
+    const out = MOON.radius * (1 + 1.9 * far * far);
     gestures.push({
       kind: 'press',
       at: {x: MOON.x + Math.cos(angle) * out, y: MOON.y + Math.sin(angle) * out},
-      pressure: random.between(0.3, 0.45),
+      pressure: random.between(0.38, 0.48) - 0.15 * far,
       angle: random.between(0, 6.28),
-      skim: 0.5,
+      skim: 0.45,
+      size: random.between(1, 1.25) - 0.35 * far,
     });
   }
   return {
     title: 'Dab the moon',
     tool: 'cotton',
-    paints: ['titaniumWhite', 'cadmiumYellow'],
-    note: 'A ball of cotton wool in a clothespin, dipped in white and dabbed over and over in one spot until the moon is solid; then, nearly dry, dabbed lightly around it for the glow.',
+    paints: ['titaniumWhite'],
+    note: 'Before a single trunk goes in, a ball of cotton wool in a clothespin, dipped in white and dabbed over and over in one spot until the moon is solid; then, nearly dry, dabbed lightly around it for the glow. The trees will stand in front of its light.',
     gestures,
   };
 }
@@ -827,56 +879,56 @@ function lightSpots(random: Random, count: number, avoidFox = true): Point[] {
 }
 
 function bundleFlowers(random: Random): Step {
+  // Meadow flowers: thick in the foreground and toward the light, thinning
+  // into the shadows; never on the trodden path or where the fox will sit.
+  const meadow = (count: number) => {
+    const spots: Point[] = [];
+    while (spots.length < count) {
+      const at = {x: random.between(0.3, WIDTH - 0.3), y: random.between(9, HEIGHT - 0.2)};
+      if (at.y < horizon(at.x) + 0.35 || fromPath(at) < 0.45) continue;
+      if (near(at, {x: FOX.x, y: FOX.y - 0.5}, 1.3)) continue;
+      const lit = 1 - smoothstep(0.4, 3, fromPath(at));
+      const foreground = smoothstep(horizon(at.x), HEIGHT, at.y);
+      if (random.next() > 0.2 + 0.45 * foreground + 0.45 * lit) continue;
+      spots.push(at);
+    }
+    return spots;
+  };
   const gestures: Gesture[] = [];
-  // Flowers grow along the path's edges, leaving the trodden middle bare.
-  const along = (count: number) =>
-    Array.from({length: count}, () => {
-      const side: -1 | 1 = random.next() < 0.5 ? -1 : 1;
-      const i = 2 + random.index(17);
-      const edge = pathSide(side)[i] as Point;
-      const middle = path(i / 20).at;
-      const outX = edge.x - middle.x;
-      const outY = edge.y - middle.y;
-      const out = Math.hypot(outX, outY) || 1;
-      const beyond = random.between(0.1, 0.55);
-      return {x: edge.x + (outX / out) * beyond, y: edge.y + (outY / out) * beyond};
-    }).filter(
-      (p) => p.y < HEIGHT - 0.1 && !PATH.contains(p) && !near(p, {x: FOX.x, y: FOX.y - 0.5}, 1.3),
-    );
-  const clearing = scatter(random, rectangle(8.2, 9, 10.6, 9.9), 4).filter(
-    (p) => !near(p, FOX, 1.3),
-  );
-  const yellow = tour(random, [...along(14), ...clearing], CLEARING);
-  yellow.forEach((at, i) => {
+  const stamp = (at: Point) =>
+    gestures.push({
+      kind: 'press',
+      at,
+      pressure: random.between(0.45, 0.95),
+      angle: random.between(-0.9, 0.9),
+      size: random.between(0.8, 1.15),
+    });
+  tour(random, meadow(20), CLEARING).forEach((at, i) => {
     if (i % 3 === 0)
       gestures.push({
         kind: 'load',
-        mix: {cadmiumYellow: 4, titaniumWhite: 1},
-        amount: 5,
+        mix: byHand(random, {cadmiumYellow: 4, titaniumWhite: 1}, 0.3),
+        amount: random.between(4, 5.5),
         keep: 0.2,
       });
-    gestures.push({
-      kind: 'press',
-      at,
-      pressure: random.between(0.6, 0.9),
-      angle: random.between(-0.6, 0.6),
-    });
+    stamp(at);
   });
   gestures.push({kind: 'clean'});
-  tour(random, along(6), CLEARING).forEach((at, i) => {
-    if (i % 3 === 0) gestures.push({kind: 'load', mix: {titaniumWhite: 1}, amount: 5, keep: 0.1});
-    gestures.push({
-      kind: 'press',
-      at,
-      pressure: random.between(0.5, 0.8),
-      angle: random.between(-0.6, 0.6),
-    });
+  tour(random, meadow(9), CLEARING).forEach((at, i) => {
+    if (i % 3 === 0)
+      gestures.push({
+        kind: 'load',
+        mix: byHand(random, {titaniumWhite: 6, cadmiumYellow: 0.15}),
+        amount: random.between(4, 5.5),
+        keep: 0.1,
+      });
+    stamp(at);
   });
   return {
     title: 'Stamp the flowers',
     tool: 'bundle',
     paints: ['cadmiumYellow', 'titaniumWhite'],
-    note: 'Twenty cotton swabs held in a rubber band and fanned out, dipped in yellow and stamped along the path: a scatter of small flowers with every press. Then a few in white.',
+    note: 'Twenty cotton swabs held in a rubber band and fanned out, dipped in yellow and stamped through the meadow: a scatter of small flowers with every press, thickest toward the light. Then a few in white.',
     gestures,
     pace: 1.4,
   };
@@ -890,35 +942,40 @@ function swabFireflies(random: Random): Step {
     if (i % 2 === 0) {
       gestures.push({
         kind: 'load',
-        mix: yellow ? {cadmiumYellow: 5, sapGreen: 1, titaniumWhite: 2} : {titaniumWhite: 1},
-        amount: 5,
+        mix: byHand(
+          random,
+          yellow ? {cadmiumYellow: 5, sapGreen: 1, titaniumWhite: 2} : {titaniumWhite: 1},
+        ),
+        amount: random.between(4, 5.5),
         keep: 0.1,
       });
     }
+    // Most are a quick touch of the tip; now and then the swab is pressed flat.
     gestures.push({
       kind: 'press',
       at,
-      pressure: random.between(0.55, 0.9),
+      pressure: random.between(0.4, 0.95),
       angle: random.between(0, 6.28),
+      size: 0.42 + random.next() ** 1.8,
     });
   });
   return {
     title: 'Dot the fireflies',
     tool: 'swab',
     paints: ['titaniumWhite', 'cadmiumYellow', 'sapGreen'],
-    note: 'One swab, one dot at a time: white ones, and yellow-green ones, thickest where the light is.',
+    note: 'One swab, one dot at a time, some with just its tip and some pressed flat: white ones and yellow-green ones, thickest where the light is.',
     gestures,
     pace: 1.5,
   };
 }
 
-function linerFox(): Step {
+function penFox(): Step {
   return {
     title: 'Draw the fox',
-    tool: 'liner',
+    tool: 'pen',
     paints: ['titaniumWhite'],
-    note: 'The liner again, with pure white: a fox sitting at the edge of the clearing, filled in with short strokes, then outlined, ears and tail last.',
-    gestures: [{kind: 'load', mix: {titaniumWhite: 1}, amount: 9}, ...foxGestures()],
+    note: 'A white paint pen, fed from its barrel so it never runs dry: the fox outlined first, then filled with lines back and forth until it is solid white, the ears and the curl of the tail last.',
+    gestures: [{kind: 'load', mix: {titaniumWhite: 1}, amount: 4}, ...foxGestures()],
   };
 }
 
@@ -955,17 +1012,24 @@ function linerEdges(random: Random, trees: Planted[]): Step {
   };
 }
 
-function cottonGlows(spots: Point[]): Step {
+function cottonGlows(random: Random, spots: Point[]): Step {
   const gestures: Gesture[] = [];
   spots.forEach((at, i) => {
-    if (i % 2 === 0) gestures.push({kind: 'load', mix: {titaniumWhite: 1}, amount: 3, keep: 0.2});
+    if (i % 2 === 0)
+      gestures.push({
+        kind: 'load',
+        mix: {titaniumWhite: 1},
+        amount: random.between(2.4, 3.4),
+        keep: 0.2,
+      });
     gestures.push({
       kind: 'press',
       at,
-      pressure: 0.5 + 0.1 * Math.sin(i * 2.3),
-      angle: i * 1.7,
+      pressure: random.between(0.4, 0.62),
+      angle: random.between(0, 6.28),
       skim: 0.3,
-      twist: 1,
+      twist: random.between(0.7, 1.25),
+      size: random.between(0.75, 1.25),
     });
   });
   return {
@@ -988,6 +1052,7 @@ function swabSparkles(random: Random, glows: Point[]): Step {
       at,
       pressure: random.between(0.35, 0.6),
       angle: random.between(0, 6.28),
+      size: 0.35 + 0.6 * random.next() ** 1.5,
     });
   });
   return {
@@ -998,16 +1063,6 @@ function swabSparkles(random: Random, glows: Point[]): Step {
     gestures,
     pace: 1.5,
   };
-}
-
-/** Insert a reload every `every` strokes, keeping a share of the old paint. */
-function withReloads(gestures: Gesture[], every: number, mix: Mix, amount: number): Gesture[] {
-  const out: Gesture[] = [];
-  gestures.forEach((gesture, i) => {
-    if (i > 0 && i % every === 0) out.push({kind: 'load', mix, amount, keep: 0.3});
-    out.push(gesture);
-  });
-  return out;
 }
 
 export function moonlitWood(seed = 11): Score {
@@ -1025,18 +1080,18 @@ export function moonlitWood(seed = 11): Score {
       pullMist(random),
       layGround(random),
       scrubAll(random),
+      cottonMoon(random),
       pullTrunks(random, trees),
-      scrubCanopy(random, trees),
+      scrubCanopy(random),
       spatterStars(random),
       combGrass(random),
       linerLights(random),
       dryEverything(),
-      cottonMoon(random),
       bundleFlowers(random),
       swabFireflies(random),
-      linerFox(),
+      penFox(),
       linerEdges(random, trees),
-      cottonGlows(glows),
+      cottonGlows(random, glows),
       swabSparkles(random, glows),
     ],
   };

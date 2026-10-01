@@ -298,6 +298,26 @@ function bundle(ink: Ink, load: Load | undefined) {
   });
 }
 
+function paintPen(ink: Ink, load: Load | undefined) {
+  // The barrel, the cone that holds the nib, and the felt nib wet with paint.
+  ink.fillStyle = linear(ink, -0.19, 0, 0.19, 0, ['#2b2e33', '#5b6068', '#2b2e33']);
+  roundRect(ink, -0.19, 0.42, 0.38, 4.6, 0.12);
+  ink.fill();
+  ink.fillStyle = linear(ink, -0.19, 0, 0.19, 0, ['#d9d8d2', '#ffffff', '#d9d8d2']);
+  ink.fillRect(-0.19, 3.9, 0.38, 0.32);
+  ink.fillStyle = linear(ink, -0.17, 0, 0.17, 0, ['#9da2a8', '#e3e6e9', '#9da2a8']);
+  ink.beginPath();
+  ink.moveTo(-0.05, 0.12);
+  ink.lineTo(0.05, 0.12);
+  ink.lineTo(0.17, 0.46);
+  ink.lineTo(-0.17, 0.46);
+  ink.closePath();
+  ink.fill();
+  ink.fillStyle = load?.[Math.floor(load.length / 2)] ?? '#f4f3ef';
+  roundRect(ink, -0.04, -0.01, 0.08, 0.16, 0.035);
+  ink.fill();
+}
+
 function tube(ink: Ink, paint: string | undefined) {
   ink.save();
   ink.rotate(-0.6);
@@ -406,6 +426,8 @@ function drawInFrame(ink: Ink, pose: Pose, load: Load | undefined, time: number)
       return swabStick(ink, load?.[Math.floor((load?.length ?? 0) / 2)], -0.5, 3);
     case 'bundle':
       return bundle(ink, load);
+    case 'pen':
+      return paintPen(ink, load);
     case 'tube':
       return tube(ink, pose.paint);
     case 'dryer':

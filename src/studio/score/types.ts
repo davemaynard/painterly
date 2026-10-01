@@ -28,8 +28,19 @@ export type Gesture =
    * turned on its edge; `tilt` turns the tool off square to its path, in radians.
    */
   | ({kind: 'stroke'; points: StrokePoint[]; edge?: boolean; tilt?: number} & Handling)
-  /** Put the tool down at one spot and lift it: a pounce, a dab, a dot. `twist` turns it while pressed. */
-  | ({kind: 'press'; at: Point; pressure: number; angle?: number; twist?: number} & Handling)
+  /**
+   * Put the tool down at one spot and lift it: a pounce, a dab, a dot. `twist`
+   * turns it while pressed; `size` scales the contact, for a swab touched with
+   * just its tip or squashed flat.
+   */
+  | ({
+      kind: 'press';
+      at: Point;
+      pressure: number;
+      angle?: number;
+      twist?: number;
+      size?: number;
+    } & Handling)
   /** Charge the tool with paint. `keep` is how much of what it held stays mixed in. */
   | {kind: 'load'; mix: Mix; amount: number; keep?: number}
   /** Wipe the tool. */

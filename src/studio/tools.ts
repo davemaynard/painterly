@@ -21,7 +21,8 @@ export type ToolName =
   | 'dryer'
   | 'cotton'
   | 'swab'
-  | 'bundle';
+  | 'bundle'
+  | 'pen';
 
 export type ToolSpec = {
   name: ToolName;
@@ -81,6 +82,7 @@ export const tools: Record<ToolName, ToolSpec> = {
       level: 2,
       scrape: 0.6,
       churn: 0.3,
+      drag: 0.35,
       share: 0.05,
       bare: '#9a8c74',
       resolution: [256, 48],
@@ -127,6 +129,7 @@ export const tools: Record<ToolName, ToolSpec> = {
       level: 2,
       scrape: 0.55,
       churn: 0.3,
+      drag: 0.3,
       share: 0.05,
       bare: '#a39377',
       resolution: [160, 40],
@@ -170,6 +173,7 @@ export const tools: Record<ToolName, ToolSpec> = {
       pickup: 0.03,
       capacity: 30,
       churn: 0.04,
+      drag: 0.2,
       share: 0.04,
       bare: '#8e8068',
       resolution: [96, 40],
@@ -303,5 +307,27 @@ export const tools: Record<ToolName, ToolSpec> = {
     lightDepth: 1,
     spacing: 1,
     speed: 12,
+  },
+  pen: {
+    name: 'pen',
+    label: 'White paint pen',
+    body: {
+      kind: 'pen',
+      seed: 1203,
+      shape: [0, 0, 0, 0],
+      deposit: 0.85,
+      pickup: 0,
+      capacity: 1,
+      level: 2.6,
+      churn: 0,
+      share: 0,
+      bare: '#f4f3ef',
+      resolution: [16, 16],
+    },
+    width: 0.075,
+    depth: 0.075,
+    lightDepth: 1,
+    spacing: 0.3,
+    speed: 2.5,
   },
 };

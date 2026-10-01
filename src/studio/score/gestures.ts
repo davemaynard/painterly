@@ -305,6 +305,100 @@ export function flick(
 }
 
 /**
+ * Fill a shape the way a pen fills one: lines back and forth across it at
+ * `angle`, `gap` inches apart, each turned at the shape's edge into the next
+ * so the nib hardly leaves the canvas. Every line keeps `nib` inches (the
+ * nib's radius) inside the edge, so the fill never spills past the outline.
+ */
+export function hatch(region: Region, angle: number, gap: number, nib: number): Gesture[] {
+  const along = {x: Math.cos(angle), y: Math.sin(angle)};
+  const across = {x: -along.y, y: along.x};
+  const {left, top, right, bottom} = region.bounds;
+  const corners = [
+    {x: left, y: top},
+    {x: right, y: top},
+    {x: left, y: bottom},
+    {x: right, y: bottom},
+  ];
+  const project = (p: Point, axis: Point) => p.x * axis.x + p.y * axis.y;
+  const spanOf = (axis: Point) => {
+    const values = corners.map((c) => project(c, axis));
+    return [Math.min(...values), Math.max(...values)] as const;
+  };
+  const [first, last] = spanOf(across);
+  const [start, end] = spanOf(along);
+  // The whole nib inside: its middle and eight points round its rim.
+  const rim = Array.from({length: 8}, (_, i) => ({
+    x: Math.cos((i * Math.PI) / 4) * nib,
+    y: Math.sin((i * Math.PI) / 4) * nib,
+  }));
+  const fits = (p: Point) =>
+    region.contains(p) && rim.every((r) => region.contains({x: p.x + r.x, y: p.y + r.y}));
+  const at = (offset: number, t: number): Point => ({
+    x: across.x * offset + along.x * t,
+    y: across.y * offset + along.y * t,
+  });
+
+  // Each line across the shape, as the runs of it the nib fits along.
+  const step = Math.min(0.01, gap / 4);
+  const offsetOf = (line: number) => first + gap / 2 + line * gap;
+  const lines: [number, number][][] = [];
+  for (let line = 0; offsetOf(line) < last; line++) {
+    const runs: [number, number][] = [];
+    let from: number | null = null;
+    for (let t = start; t <= end + step; t += step) {
+      const inside = t <= end && fits(at(offsetOf(line), t));
+      if (inside && from === null) from = t;
+      if (!inside && from !== null) {
+        runs.push([from, t - step]);
+        from = null;
+      }
+    }
+    lines.push(runs);
+  }
+  const used = lines.map((runs) => runs.map(() => false));
+
+  /** The run on `line` that the pen can turn into from `reached`, heading `forward`. */
+  const turnInto = (line: number, reached: number, forward: boolean) =>
+    (lines[line] ?? []).findIndex(([c, d], i) => {
+      if (used[line]?.[i]) return false;
+      const begin = forward ? c : d;
+      // A short turn along the edge, never a jump across open canvas.
+      return (
+        Math.abs(begin - reached) <= 3 * gap &&
+        fits(at(offsetOf(line) - gap / 2, (begin + reached) / 2))
+      );
+    });
+
+  // Run into run, back and forth, while the next line has a run to turn into;
+  // where it has none, the pen lifts and starts again.
+  const gestures: Gesture[] = [];
+  lines.forEach((runs, line) => {
+    runs.forEach((_, index) => {
+      if (used[line]?.[index]) return;
+      const points: StrokePoint[] = [];
+      let row = line;
+      let which = index;
+      let forward = true;
+      while (which >= 0) {
+        (used[row] as boolean[])[which] = true;
+        const [c, d] = (lines[row] as [number, number][])[which] as [number, number];
+        const [from, to] = forward ? [c, d] : [d, c];
+        points.push(
+          {...at(offsetOf(row), from), pressure: 0.8},
+          {...at(offsetOf(row), to), pressure: 0.8},
+        );
+        forward = !forward;
+        row++;
+        which = turnInto(row, to, forward);
+      }
+      gestures.push({kind: 'stroke', points});
+    });
+  });
+  return gestures;
+}
+
+/**
  * A comb set down on its teeth and flicked up and away: one tuft of grass
  * blades. `lean` bends the flick sideways; `tilt` turns the comb's spine off
  * square, so the blades fan out at different heights.

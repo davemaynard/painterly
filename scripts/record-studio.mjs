@@ -115,7 +115,7 @@ async function writeStills(page, directory) {
     [1, 0.45],
     [2, 0.22],
     [5, 0.4],
-    [6, 0.7],
+    [7, 0.7],
     [18, 1],
   ];
   const steps = await page.evaluate(() => window.studio.steps);

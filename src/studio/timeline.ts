@@ -245,7 +245,8 @@ export function compile(score: Score, texelsPerInch: number): Timeline {
         lower(pace, gesture.pressure);
         const at = texel(gesture.at);
         const angle = gesture.angle ?? 0;
-        const reach = spec.lightDepth + (1 - spec.lightDepth) * gesture.pressure;
+        const reach =
+          (spec.lightDepth + (1 - spec.lightDepth) * gesture.pressure) * (gesture.size ?? 1);
         key({angle});
         emit({
           kind: 'touch',
@@ -346,7 +347,8 @@ export function compile(score: Score, texelsPerInch: number): Timeline {
     const reach = spec.lightDepth + (1 - spec.lightDepth) * pressure;
     let across = (spec.width / 2) * texelsPerInch;
     let along = (spec.depth / 2) * reach * texelsPerInch;
-    // A round brush spreads as it is pressed; a flat one narrows as it lifts onto its tip.
+    // A round brush spreads as it is pressed; a flat one narrows as it lifts onto
+    // its tip. A pen's felt nib keeps its width however it is held.
     if (kind === 'round') across *= 0.35 + 0.65 * pressure;
     if (kind === 'flat') across *= 0.7 + 0.3 * pressure;
     // On its edge, a flat brush slides its chisel along the stroke.

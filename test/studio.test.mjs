@@ -48,7 +48,7 @@ test('a little Prussian blue goes a long way into white', () => {
   );
 });
 
-test('the score follows the method step for step', () => {
+test('each step of the score picks up its own tool, in order', () => {
   const score = moonlitWood();
   assert.deepEqual(
     score.steps.map((step) => step.tool),
@@ -59,16 +59,16 @@ test('the score follows the method step for step', () => {
       'wideBrush',
       'flatBrush',
       'scrubber',
+      'cotton',
       'trunkBrush',
       'scrubber',
       'spatter',
       'comb',
       'liner',
       'dryer',
-      'cotton',
       'bundle',
       'swab',
-      'liner',
+      'pen',
       'liner',
       'cotton',
       'swab',

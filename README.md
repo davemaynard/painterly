@@ -53,12 +53,12 @@ Run `npm run size` to regenerate the first three.
 |---|---|
 | Library, gzipped | **7.7 KB** |
 | Demo page script and its worker, gzipped | **11.3 KB** |
-| Studio page script, gzipped | **30.3 KB** |
+| Studio page script, gzipped | **32.8 KB** |
 | Runtime dependencies | **0** (a Mersenne Twister is bundled, see `NOTICE`) |
 | Planning a 1050 × 1400 photo | **~1.2 s** on an M4 Mac mini, ~108,000 strokes |
 | A plan crossing back from the worker | **15 MB** packed into typed arrays, not 110 MB of objects |
 | Longest frame CI will accept | **60 ms** painting, **100 ms** skipping to the end |
-| The studio's whole painting | **28,550** events in **4.5 s** of GPU time; plays at **60 fps** at 4× on an M4 Mac mini, no frame over 17 ms |
+| The studio's whole painting | **26,561** events in **4.2 s** of GPU time; plays at **60 fps** at 4× on an M4 Mac mini, no frame over 17 ms |
 
 ## Use it as a library
 
@@ -149,22 +149,23 @@ speed, and each tool is on screen doing its work.
   (Kubelka-Munk): blue and yellow make green, a tenth of Prussian blue still
   turns white blue, black dirties everything it touches.
 - **Paint goes both ways.** At every touch the tool and the canvas trade wet
-  paint. A dry two-inch brush picks up the drops it meets and lays them down
-  further along, which is all smearing is.
+  paint, and bristles carry some of it along with them. A dry two-inch brush
+  picks up the drops it meets, drags them out into the stroke and lays them
+  down further along, which is all smearing is.
 - **Wet paint is two layers.** Fresh paint sits on what is there until a tool
   churns them together, so dark trunks pulled over a wet sky stay dark, streaked
   with the blue they dragged up.
 - **One model per tool.** Bristles that clump and run dry, a knife that levels
   paint and leaves a ridge at its edge, steel wool that prints a new tangle of
   crinkled coils at every press and pulls the paint up into peaks, a comb whose
-  teeth leave the canvas one at a time, cotton that drags fine rays when
-  twisted, twenty swabs fanned out in a rubber band. Then a hair dryer, and the
-  shine goes.
+  teeth touch down and leave the canvas one at a time, cotton that drags fine
+  rays when twisted, twenty swabs fanned out in a rubber band, a paint pen whose
+  paint settles into an even film. Then a hair dryer, and the shine goes.
 - **Lit like a photograph of a canvas.** Paint has thickness, the weave shows
   through thin paint, every ridge catches one light from the upper left, and
   wet paint shines.
 
-The method, step for step, is Jay Lee's, from his video
+The method is Jay Lee's, from his video
 [Iron scrubber painting technique](https://youtu.be/96vWCTYhMZM). The picture, a
 fox at the edge of a moonlit wood, is our own. It all runs on the GPU in
 WebGL2, at 128 texels to the inch.
