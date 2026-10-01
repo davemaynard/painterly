@@ -58,6 +58,14 @@ try {
   status.textContent = error instanceof Error ? error.message : String(error);
   throw error;
 }
+// A browser can take the GPU back (a driver reset, a phone short of memory),
+// and the paint lives there. Say so rather than show a frozen picture.
+canvas.addEventListener('webglcontextlost', (event) => {
+  event.preventDefault();
+  player.pause();
+  status.textContent = 'The browser took back the GPU this painting lives on. Reload to start again.';
+});
+
 const surface = createSurface(gl, timeline.width, timeline.height, DETAIL);
 const performer = createPerformer(surface);
 const sprites = createSprites(overlay);
