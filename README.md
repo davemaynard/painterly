@@ -58,7 +58,7 @@ Run `npm run size` to regenerate the first three.
 | Planning a 1050 × 1400 photo | **~1.2 s** on an M4 Mac mini, ~108,000 strokes |
 | A plan crossing back from the worker | **15 MB** packed into typed arrays, not 110 MB of objects |
 | Longest frame CI will accept | **60 ms** painting, **100 ms** skipping to the end |
-| The studio's whole painting | **~38,000** events, painted in **~2.5 s** of GPU time; plays at **60 fps** at 4× on an M4 Mac mini |
+| The studio's whole painting | **28,550** events in **4.5 s** of GPU time; plays at **60 fps** at 4× on an M4 Mac mini, no frame over 17 ms |
 
 ## Use it as a library
 
