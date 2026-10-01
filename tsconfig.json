@@ -11,6 +11,7 @@
     "isolatedModules": true,
     "declaration": true,
     "noEmit": true,
+    "allowImportingTsExtensions": true,
     "types": ["node"]
   },
   "include": ["src", "tsup.config.ts"]

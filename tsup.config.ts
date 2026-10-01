@@ -28,4 +28,14 @@ export default defineConfig([
     banner: {js: '/* painterly bundles mersenne-twister, BSD-3-Clause \u2014 see NOTICE */'},
     outExtension: () => ({js: '.js'}),
   },
+  {
+    // The studio page: a painting made with simulated tools, on WebGL2.
+    // Its own bundle, so the photo page carries none of it.
+    entry: {studio: 'src/studio/main.ts'},
+    outDir: 'docs/studio',
+    format: ['iife'],
+    minify: true,
+    target: 'es2022',
+    outExtension: () => ({js: '.js'}),
+  },
 ]);

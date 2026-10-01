@@ -17,3 +17,4 @@ console.log(`Library, gzipped                       ${await kb('dist/index.js')}
 console.log(
   `Demo page script and its worker        ${await kb('docs/painterly.js', 'docs/planner.js')}`,
 );
+console.log(`Studio page script, gzipped            ${await kb('docs/studio/studio.js')}`);

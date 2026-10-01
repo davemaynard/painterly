@@ -47,16 +47,18 @@ It finishes in 45 seconds at any size — 20 for the underpainting — then stop
 
 ## Numbers
 
-Run `npm run size` to regenerate the first two.
+Run `npm run size` to regenerate the first three.
 
 | | |
 |---|---|
 | Library, gzipped | **7.7 KB** |
-| Demo page script and its worker, gzipped | **11.2 KB** |
+| Demo page script and its worker, gzipped | **11.3 KB** |
+| Studio page script, gzipped | **30.3 KB** |
 | Runtime dependencies | **0** (a Mersenne Twister is bundled, see `NOTICE`) |
 | Planning a 1050 × 1400 photo | **~1.2 s** on an M4 Mac mini, ~108,000 strokes |
 | A plan crossing back from the worker | **15 MB** packed into typed arrays, not 110 MB of objects |
 | Longest frame CI will accept | **60 ms** painting, **100 ms** skipping to the end |
+| The studio's whole painting | **~38,000** events, painted in **~2.5 s** of GPU time; plays at **60 fps** at 4× on an M4 Mac mini |
 
 ## Use it as a library
 
@@ -130,6 +132,43 @@ The canvas is cut into bands painted by one process each, which is what makes
 it quick; the bands match a single canvas up to a few levels of antialiasing.
 HEIC is read through macOS's `sips`.
 
+## Or watch one painted with real tools
+
+<p align="center">
+  <img src="docs/studio/process.jpg" alt="Six moments from the studio page: paint dropped onto a bare canvas, a two-inch brush spreading the sky, a knife patting in dark masses, a steel-wool scrubber pounced over the wet paint, trunks pulled up with a flat brush, and the finished night wood with a white fox at the edge of a clearing">
+</p>
+
+[`studio/`](https://davemaynard.github.io/painterly/studio/) is a different kind of
+painting: no photo, and no strokes planned from one. It follows an acrylic
+painter's method step by step, the way a video tutorial teaches it, and
+simulates every tool. Nineteen steps, about ten minutes at the hand's own
+speed, and each tool is on screen doing its work.
+
+- **Paint is pigment, not RGB.** Each tube is its color straight from the tube
+  plus how hard it scatters light, and mixes the way pigment does
+  (Kubelka-Munk): blue and yellow make green, a tenth of Prussian blue still
+  turns white blue, black dirties everything it touches.
+- **Paint goes both ways.** At every touch the tool and the canvas trade wet
+  paint. A dry two-inch brush picks up the drops it meets and lays them down
+  further along, which is all smearing is.
+- **Wet paint is two layers.** Fresh paint sits on what is there until a tool
+  churns them together, so dark trunks pulled over a wet sky stay dark, streaked
+  with the blue they dragged up.
+- **One model per tool.** Bristles that clump and run dry, a knife that levels
+  paint and leaves a ridge at its edge, steel wool that prints a new tangle of
+  crinkled coils at every press and pulls the paint up into peaks, a comb whose
+  teeth leave the canvas one at a time, cotton that drags fine rays when
+  twisted, twenty swabs fanned out in a rubber band. Then a hair dryer, and the
+  shine goes.
+- **Lit like a photograph of a canvas.** Paint has thickness, the weave shows
+  through thin paint, every ridge catches one light from the upper left, and
+  wet paint shines.
+
+The method, step for step, is Jay Lee's, from his video
+[Iron scrubber painting technique](https://youtu.be/96vWCTYhMZM). The picture, a
+fox at the edge of a moonlit wood, is our own. It all runs on the GPU in
+WebGL2, at 128 texels to the inch.
+
 ## How it's built
 
 - `src/image/` measures the photo: a float RGB raster, a linear-time Gaussian
@@ -157,6 +196,13 @@ HEIC is read through macOS's `sips`.
 - `cli/` is the command line: the three media, the finishes that sit the paint
   on its support (relief, paper tooth, pigment pooling, ink), and the band
   painters.
+- `src/studio/` is the studio page. `engine/` is the paint on the GPU: the
+  pigments, the five textures a canvas is made of, a shader for each thing that
+  can happen to it (a touch, a drop, drying) and one for the light.
+  `tools.ts` gives each tool its size and habits, `score/` writes the painting
+  down as gestures, `timeline.ts` puts the gestures on the clock, `player.ts`
+  plays it with copies of the canvas kept for going back, and `sprites.ts` draws
+  the tools from above, with the paint they actually carry on their tips.
 - `processing/` holds the 2020 Processing sketches this grew out of, untouched.
 
 TypeScript, Canvas 2D, no framework. `tsup` builds the library to `dist/` and
@@ -174,6 +220,7 @@ npm run build
 npm run gif      # re-record docs/demo.gif from the page (needs ffmpeg)
 npm run still    # re-shoot docs/still.jpg, the photo-and-painting pair above
 npm run size     # re-measure the Numbers table
+npm run studio:clip -- --speed 3 --out studio.mp4   # record the studio painting, start to finish (needs a GPU and ffmpeg)
 
 npm install --prefix cli
 npm run check --prefix cli    # tsc over the CLI (Biome covers it from the root)

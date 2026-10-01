@@ -48,6 +48,8 @@
     "gif": "node scripts/record-demo.mjs --format gif",
     "clip": "node scripts/record-demo.mjs --format mp4",
     "still": "node scripts/record-still.mjs",
+    "studio:clip": "node scripts/record-studio.mjs",
+    "studio:stills": "node scripts/record-studio.mjs --stills docs/studio",
     "size": "node scripts/report-size.mjs"
   },
   "devDependencies": {

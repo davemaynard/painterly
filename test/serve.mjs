@@ -20,7 +20,8 @@ export async function serveDocs() {
   const server = createServer(async (request, response) => {
     try {
       const pathname = new URL(request.url, 'http://localhost').pathname;
-      const file = join(docs, pathname === '/' ? 'index.html' : pathname);
+      // A folder serves its index.html, as GitHub Pages does.
+      const file = join(docs, pathname.endsWith('/') ? `${pathname}index.html` : pathname);
       const body = await readFile(file);
       response.writeHead(200, {'content-type': types[extname(file)] ?? 'application/octet-stream'});
       response.end(body);

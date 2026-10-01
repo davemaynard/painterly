@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Fox at the edge of the wood · painterly</title>
+    <meta
+      name="description"
+      content="Watch an acrylic painting made stroke by stroke with simulated tools and paint: drops on the canvas, a wide brush, a knife, a steel-wool scrubber, a comb, cotton."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Fox at the edge of the wood" />
+    <meta
+      property="og:description"
+      content="An acrylic painting made stroke by stroke with simulated tools and paint, from the first drop on the canvas to the last dot of light."
+    />
+    <meta property="og:image" content="https://davemaynard.github.io/painterly/studio/still.jpg" />
+    <meta property="og:url" content="https://davemaynard.github.io/painterly/studio/" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500&family=Instrument+Serif&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="../painterly.css" />
+    <link rel="stylesheet" href="studio.css" />
+    <link rel="icon" href="../favicon-32.png" sizes="32x32" type="image/png" />
+    <link rel="icon" href="../favicon-16.png" sizes="16x16" type="image/png" />
+    <link rel="apple-touch-icon" href="../apple-touch-icon.png" />
+  </head>
+  <body>
+    <div class="app">
+      <aside class="rail">
+        <header class="brand">
+          <h1>Fox at the edge of the wood</h1>
+          <p>
+            Every mark is a simulated tool moving simulated paint. Drops go straight onto the
+            canvas; a wide brush spreads them, a knife pats in the dark, a steel-wool scrubber
+            pounces it all while wet. Paint mixes as pigment does, stands up off the canvas, and
+            sets when the hair dryer comes out.
+          </p>
+        </header>
+
+        <nav class="band" aria-label="Steps">
+          <h2>Steps</h2>
+          <ol id="steps" class="steps"></ol>
+        </nav>
+
+        <p class="colophon">
+          The method, step for step, is Jay Lee's, from
+          <a href="https://youtu.be/96vWCTYhMZM" rel="noopener">Iron scrubber painting technique</a>;
+          the picture is our own. <a href="../">painterly</a> ·
+          <a href="https://github.com/davemaynard/painterly">Source</a> ·
+          <a href="https://davemaynard.dev">Dave Maynard</a>
+        </p>
+      </aside>
+
+      <section class="viewer">
+        <header class="runner">
+          <span id="status" class="readout" role="status" aria-live="polite">Loading…</span>
+        </header>
+
+        <figure class="frame">
+          <canvas
+            id="painting"
+            width="1600"
+            height="1200"
+            role="img"
+            aria-label="A wood at night: dark trunks against a blue sky stippled with light, a low moon, fireflies, flowers along a path, and a white fox sitting at the edge of a clearing."
+          ></canvas>
+          <canvas id="tools" aria-hidden="true"></canvas>
+        </figure>
+        <p id="caption" class="caption"></p>
+
+        <fieldset class="transport">
+          <legend class="visually-hidden">Playback</legend>
+          <div class="group">
+            <button id="back" type="button" class="icon-button" aria-label="Previous step" disabled>
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <rect x="5" y="5" width="1.6" height="14" />
+                <path d="M19 5 19 19 8.4 12Z" />
+              </svg>
+            </button>
+            <button id="play" type="button" class="icon-button primary" aria-label="Play">
+              <svg class="glyph-play" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M7 4.5 7 19.5 19.5 12Z" />
+              </svg>
+              <svg class="glyph-pause" viewBox="0 0 24 24" aria-hidden="true">
+                <rect x="7.4" y="5" width="1.6" height="14" />
+                <rect x="15" y="5" width="1.6" height="14" />
+              </svg>
+            </button>
+            <button id="ahead" type="button" class="icon-button" aria-label="Next step">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M5 5 5 19 15.6 12Z" />
+                <rect x="17.4" y="5" width="1.6" height="14" />
+              </svg>
+            </button>
+          </div>
+          <div id="stages" class="stages" aria-hidden="true"></div>
+          <label class="speed">
+            <span class="visually-hidden">Speed</span>
+            <span class="select"><select id="speed"></select></span>
+          </label>
+          <button id="download" type="button" hidden>Download PNG</button>
+        </fieldset>
+      </section>
+    </div>
+
+    <script src="studio.js"></script>
+  </body>
+</html>
